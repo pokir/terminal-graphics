@@ -14,4 +14,7 @@ typedef struct {
 Pos2D project(Pos3D p); // convert world cords to normalized screen coords
 Pos2D screen(Pos2D p); // convert normalized screen coords to screen pixel coords
 Pos3D translate(Pos3D p, Pos3D translation);
+Pos3D rotate_xy(Pos3D p, double angle);
+Pos3D rotate_xz(Pos3D p, double angle);
+Pos3D rotate_yz(Pos3D p, double angle);
 
