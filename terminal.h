@@ -1,14 +1,14 @@
 typedef struct {
-  int width;
-  int height;
-  int width_in_pixels;
-  int height_in_pixels;
+    int width;
+    int height;
+    int width_in_pixels;
+    int height_in_pixels;
 } TerminalSize;
 
 // position of a terminal character
 typedef struct {
-  int x;
-  int y;
+    int x;
+    int y;
 } TerminalCharPos;
 
 // must be called before rendering anything (before any stdout write!)
@@ -23,7 +23,7 @@ void begin_frame(void);
 // must be called after every frame
 void end_frame(void);
 
-void print_at(TerminalCharPos p, const char *text);
+void print_at(TerminalCharPos p, const char* text);
 void put_char_at(TerminalCharPos p, char ch);
 void clear_frame(void);
 

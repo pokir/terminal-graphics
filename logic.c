@@ -12,8 +12,7 @@ typedef struct {
     double angle;
 } Cube;
 
-void setup() {
-}
+void setup() {}
 
 double dz = 0;
 double angle_y = 0;
@@ -25,22 +24,18 @@ void update(double dt) {
 
 void draw_cube(Pos3D p, double s, double angle_y, double angle_z) {
     Pos3D points[] = {
-        (Pos3D){-s / 2., -s / 2., -s / 2.},
-        (Pos3D){ s / 2., -s / 2., -s / 2.},
-        (Pos3D){-s / 2.,  s / 2., -s / 2.},
-        (Pos3D){ s / 2.,  s / 2., -s / 2.},
+        (Pos3D){-s / 2., -s / 2., -s / 2.}, (Pos3D){s / 2., -s / 2., -s / 2.},
+        (Pos3D){-s / 2., s / 2., -s / 2.},  (Pos3D){s / 2., s / 2., -s / 2.},
 
-        (Pos3D){-s / 2., -s / 2.,  s / 2.},
-        (Pos3D){ s / 2., -s / 2.,  s / 2.},
-        (Pos3D){-s / 2.,  s / 2.,  s / 2.},
-        (Pos3D){ s / 2.,  s / 2.,  s / 2.},
+        (Pos3D){-s / 2., -s / 2., s / 2.},  (Pos3D){s / 2., -s / 2., s / 2.},
+        (Pos3D){-s / 2., s / 2., s / 2.},   (Pos3D){s / 2., s / 2., s / 2.},
     };
 
     size_t num_points = sizeof(points) / sizeof(points[0]);
 
     // transform the points
     for (size_t i = 0; i < num_points; ++i) {
-        Pos3D *point = &points[i];
+        Pos3D* point = &points[i];
         *point = rotate_xz(*point, angle_y);
         *point = rotate_xy(*point, angle_z);
         *point = translate(*point, p);
@@ -74,6 +69,4 @@ void draw() {
     draw_cube(p, 0.9, angle_y, 0);
 }
 
-void cleanup() {
-}
-
+void cleanup() {}

@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static char *screen = NULL;
+static char* screen = NULL;
 static int screen_width = 0;
 static int screen_height = 0;
 
@@ -22,7 +22,7 @@ static int resize_screen(int width, int height) {
 
     size_t size = (size_t)width * (size_t)height;
 
-    char *new_screen = realloc(screen, size);
+    char* new_screen = realloc(screen, size);
     if (new_screen == NULL)
         return 0;
 
@@ -34,8 +34,8 @@ static int resize_screen(int width, int height) {
 }
 
 void init_renderer(void) {
-    // give stdout a large userspace buffer (frame is still flushed once in end_frame)
-    // this makes it so newlines ('\n') don't trigger a flush
+    // give stdout a large userspace buffer (frame is still flushed once in
+    // end_frame) this makes it so newlines ('\n') don't trigger a flush
     setvbuf(stdout, NULL, _IOFBF, 1024 * 1024);
 
     // hide cursor and clear the terminal once
@@ -51,7 +51,7 @@ void begin_frame(void) {
     memset(screen, ' ', (size_t)screen_width * (size_t)screen_height);
 }
 
-void print_at(TerminalCharPos p, const char *text) {
+void print_at(TerminalCharPos p, const char* text) {
     if (screen == NULL || text == NULL)
         return;
     if (p.y < 0 || p.y >= screen_height)
@@ -94,14 +94,11 @@ void end_frame(void) {
 
     // write to stdout row by row (to add '\n' separators)
     for (int y = 0; y < screen_height; ++y) {
-        fwrite(
-            screen + (size_t)y * screen_width,
-            1,
-            (size_t)screen_width,
-            stdout
-        );
+        fwrite(screen + (size_t)y * screen_width, 1, (size_t)screen_width,
+               stdout);
 
-        // avoid printing a newline after the final row because that can scroll some terminals
+        // avoid printing a newline after the final row because that can scroll
+        // some terminals
         if (y + 1 < screen_height)
             fputc('\n', stdout);
     }
@@ -121,7 +118,7 @@ void shutdown_renderer(void) {
 }
 
 TerminalSize get_terminal_size(void) {
-    TerminalSize size = {80, 24, 8 * 80, 16 * 24}; // default fallback values
+    TerminalSize size = {80, 24, 8 * 80, 16 * 24};  // default fallback values
     struct winsize ws;
 
     if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0) {
@@ -137,4 +134,3 @@ TerminalSize get_terminal_size(void) {
 
     return size;
 }
-

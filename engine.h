@@ -3,14 +3,14 @@
 #include "screen.h"
 
 typedef struct {
-  double x;
-  double y;
+    double x;
+    double y;
 } Pos2D;
 
 typedef struct {
-  double x;
-  double y;
-  double z;
+    double x;
+    double y;
+    double z;
 } Pos3D;
 
 // convert world coords to normalized screen coords

@@ -1,8 +1,8 @@
 #pragma once
 
 typedef struct {
-  int x;
-  int y;
+    int x;
+    int y;
 } PixelPos;
 
 void clear();
