@@ -47,26 +47,48 @@ void draw_cube(Pos3D p, double s, double angle_y, double angle_z) {
         pixel_points[i] = screen(project(points[i]));
     }
 
-    // draw the points
-    line(pixel_points[0], pixel_points[1]);
-    line(pixel_points[2], pixel_points[3]);
-    line(pixel_points[4], pixel_points[5]);
-    line(pixel_points[6], pixel_points[7]);
+    typedef struct {
+        int vertices[4];
+        Color color;
+        double depth;
+    } Face;
 
-    line(pixel_points[0], pixel_points[2]);
-    line(pixel_points[1], pixel_points[3]);
-    line(pixel_points[4], pixel_points[6]);
-    line(pixel_points[5], pixel_points[7]);
+    Face faces[] = {
+        {{0, 1, 3, 2}, COLOR_RED, 0.},  {{4, 6, 7, 5}, COLOR_GREEN, 0.},
+        {{0, 2, 6, 4}, COLOR_BLUE, 0.}, {{1, 5, 7, 3}, COLOR_YELLOW, 0.},
+        {{0, 4, 5, 1}, COLOR_CYAN, 0.}, {{2, 3, 7, 6}, COLOR_MAGENTA, 0.},
+    };
+    size_t num_faces = sizeof(faces) / sizeof(faces[0]);
 
-    line(pixel_points[0], pixel_points[4]);
-    line(pixel_points[1], pixel_points[5]);
-    line(pixel_points[2], pixel_points[6]);
-    line(pixel_points[3], pixel_points[7]);
+    for (size_t i = 0; i < num_faces; ++i) {
+        for (size_t j = 0; j < 4; ++j)
+            faces[i].depth += points[faces[i].vertices[j]].z;
+        faces[i].depth /= 4.;
+    }
+
+    // draw distant faces first so nearer faces cover them
+    for (size_t i = 1; i < num_faces; ++i) {
+        Face face = faces[i];
+        size_t j = i;
+        while (j > 0 && faces[j - 1].depth < face.depth) {
+            faces[j] = faces[j - 1];
+            --j;
+        }
+        faces[j] = face;
+    }
+
+    for (size_t i = 0; i < num_faces; ++i) {
+        int* v = faces[i].vertices;
+        fill_triangle(pixel_points[v[0]], pixel_points[v[1]],
+                      pixel_points[v[2]], faces[i].color);
+        fill_triangle(pixel_points[v[0]], pixel_points[v[2]],
+                      pixel_points[v[3]], faces[i].color);
+    }
 }
 
 void draw() {
-    Pos3D p = {0, 0, 1 + 0.00 * dz};
-    draw_cube(p, 0.9, angle_y, 0);
+    Pos3D p = {0, 0, 1 + 0.03 * dz};
+    draw_cube(p, 0.9, angle_y, angle_y);
 }
 
 void cleanup() {}
