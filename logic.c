@@ -25,7 +25,7 @@ void update(double dt) {
 }
 
 void draw_cube(Pos3D p, double s, double angle_y, double angle_z) {
-    const Pos3D points[] = {
+    Pos3D points[] = {
         (Pos3D){-s / 2., -s / 2., -s / 2.},
         (Pos3D){ s / 2., -s / 2., -s / 2.},
         (Pos3D){-s / 2.,  s / 2., -s / 2.},
@@ -37,26 +37,44 @@ void draw_cube(Pos3D p, double s, double angle_y, double angle_z) {
         (Pos3D){ s / 2.,  s / 2.,  s / 2.},
     };
 
-    for (size_t i = 0; i < sizeof(points) / sizeof(points[0]); ++i) {
-        Pos3D point = points[i];
-        point = rotate_xz(point, angle_y);
-        point = rotate_xy(point, angle_z);
-        point = translate(point, p);
+    size_t num_points = sizeof(points) / sizeof(points[0]);
 
-        pixel(screen(project(point)));
+    // transform the points
+    for (size_t i = 0; i < num_points; ++i) {
+        Pos3D *point = &points[i];
+        *point = rotate_xz(*point, angle_y);
+        *point = rotate_xy(*point, angle_z);
+        *point = translate(*point, p);
     }
+
+    // convert coordinates to screen coordinates
+    PixelPos pixel_points[8];
+    for (size_t i = 0; i < num_points; ++i) {
+        pixel_points[i] = screen(project(points[i]));
+    }
+
+    // draw the points
+    line(pixel_points[0], pixel_points[1]);
+    line(pixel_points[2], pixel_points[3]);
+    line(pixel_points[4], pixel_points[5]);
+    line(pixel_points[6], pixel_points[7]);
+
+    line(pixel_points[0], pixel_points[2]);
+    line(pixel_points[1], pixel_points[3]);
+    line(pixel_points[4], pixel_points[6]);
+    line(pixel_points[5], pixel_points[7]);
+
+    line(pixel_points[0], pixel_points[4]);
+    line(pixel_points[1], pixel_points[5]);
+    line(pixel_points[2], pixel_points[6]);
+    line(pixel_points[3], pixel_points[7]);
 }
 
 void draw() {
     clear();
 
-    Pos3D p = {0, 0.5, 2 + dz};
-
+    Pos3D p = {0, 0, 1 + 0.01 * dz};
     draw_cube(p, 0.9, angle_y, 0);
-
-    PixelPos p1 = {0, 0};
-    PixelPos p2 = {1000, 1000};
-    line(p1, p2);
 }
 
 void cleanup() {
