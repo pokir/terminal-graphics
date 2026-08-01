@@ -2,5 +2,5 @@ pre-commit:
   commands:
     format:
       glob: "*.{c,h,cpp,hpp}"
-      run: mise run format {staged_files}
+      run: mise exec -- clang-format -i {staged_files}
       stage_fixed: true # automatically add the formatted files back to the commit
