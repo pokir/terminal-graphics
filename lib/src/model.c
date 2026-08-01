@@ -4,6 +4,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "image.h"
+#include "screen.h"
+
 typedef struct {
     PixelPos points[3];
     Color color;
@@ -12,7 +15,15 @@ typedef struct {
 
 typedef struct {
     char* name;
-    Color color;
+    ModelColor ambient;
+    ModelColor diffuse;
+    ModelColor specular;
+    ModelColor emissive;
+    ModelColor transmission;
+    double shininess;
+    double optical_density;
+    double opacity;
+    int illumination;
 } Material;
 
 typedef struct {
@@ -53,7 +64,7 @@ static void free_materials(MaterialList* materials) {
 
 static Material* append_material(MaterialList* materials,
                                  const char* name,
-                                 Color fallback) {
+                                 ModelColor fallback) {
     if (materials->count == materials->capacity) {
         size_t next = materials->capacity == 0 ? 8 : materials->capacity * 2;
         Material* items = realloc(materials->items, next * sizeof(*items));
@@ -68,7 +79,16 @@ static Material* append_material(MaterialList* materials,
         return NULL;
 
     Material* material = &materials->items[materials->count++];
-    *material = (Material){owned_name, fallback};
+    *material = (Material){
+        .name = owned_name,
+        .ambient = {0., 0., 0.},
+        .diffuse = fallback,
+        .specular = {0., 0., 0.},
+        .emissive = {0., 0., 0.},
+        .transmission = {1., 1., 1.},
+        .optical_density = 1.,
+        .opacity = 1.,
+    };
     return material;
 }
 
@@ -80,15 +100,85 @@ static const Material* find_material(const MaterialList* materials,
     return NULL;
 }
 
-static uint8_t color_component(double value) {
+static double color_component(double value) {
     if (value <= 0.)
         return 0;
     if (value >= 1.)
-        return 255;
-    return (uint8_t)(value * 255. + 0.5);
+        return 1.;
+    return value;
 }
 
-static int load_mtl(MaterialList* materials, const char* path, Color fallback) {
+static ModelColor parse_color(const char* text, ModelColor fallback) {
+    double red;
+    double green;
+    double blue;
+    if (sscanf(text, "%lf %lf %lf", &red, &green, &blue) != 3)
+        return fallback;
+    return (ModelColor){color_component(red), color_component(green),
+                        color_component(blue)};
+}
+
+static char* relative_path(const char* obj_path, const char* referenced_path);
+
+static void apply_texture_color(const char* mtl_path,
+                                char* arguments,
+                                ModelColor* target) {
+    char* filename = NULL;
+    for (char* token = strtok(line_value(arguments), " \t"); token != NULL;
+         token = strtok(NULL, " \t"))
+        filename = token;
+    if (filename == NULL)
+        return;
+
+    char* path = relative_path(mtl_path, filename);
+    ModelColor texture;
+    if (path != NULL && image_average_color(path, &texture)) {
+        target->red *= texture.red;
+        target->green *= texture.green;
+        target->blue *= texture.blue;
+    }
+    free(path);
+}
+
+static ModelColor material_color(const Material* material) {
+    double transmission =
+        (material->transmission.red + material->transmission.green +
+         material->transmission.blue) /
+        3.;
+    double refraction =
+        material->optical_density > 0. ? 1. / material->optical_density : 1.;
+    double opacity = material->opacity * transmission;
+    if (material->illumination == 4 || material->illumination == 6 ||
+        material->illumination == 7 || material->illumination == 9)
+        opacity *= refraction;
+    if (opacity < 0.)
+        opacity = 0.;
+    if (opacity > 1.)
+        opacity = 1.;
+
+    double ambient = material->illumination >= 1 ? 0.125 : 0.;
+    double specular = material->illumination >= 2
+                          ? material->shininess / (material->shininess + 100.)
+                          : 0.;
+    double red = material->diffuse.red + ambient * material->ambient.red +
+                 specular * material->specular.red + material->emissive.red;
+    double green = material->diffuse.green + ambient * material->ambient.green +
+                   specular * material->specular.green +
+                   material->emissive.green;
+    double blue = material->diffuse.blue + ambient * material->ambient.blue +
+                  specular * material->specular.blue + material->emissive.blue;
+    if (red > 1.)
+        red = 1.;
+    if (green > 1.)
+        green = 1.;
+    if (blue > 1.)
+        blue = 1.;
+    return (ModelColor){red * opacity, green * opacity, blue * opacity};
+}
+
+static int load_mtl(MaterialList* materials,
+                    const char* path,
+                    ModelColor fallback) {
     FILE* file = fopen(path, "r");
     if (file == NULL)
         return 0;
@@ -110,13 +200,43 @@ static int load_mtl(MaterialList* materials, const char* path, Color fallback) {
                 success = 0;
         } else if (current != NULL && strncmp(statement, "Kd", 2) == 0 &&
                    (statement[2] == ' ' || statement[2] == '\t')) {
-            double red;
-            double green;
-            double blue;
-            if (sscanf(statement + 2, "%lf %lf %lf", &red, &green, &blue) == 3)
-                current->color =
-                    (Color){color_component(red), color_component(green),
-                            color_component(blue)};
+            current->diffuse = parse_color(statement + 2, current->diffuse);
+        } else if (current != NULL && strncmp(statement, "Ka", 2) == 0 &&
+                   (statement[2] == ' ' || statement[2] == '\t')) {
+            current->ambient = parse_color(statement + 2, current->ambient);
+        } else if (current != NULL && strncmp(statement, "Ks", 2) == 0 &&
+                   (statement[2] == ' ' || statement[2] == '\t')) {
+            current->specular = parse_color(statement + 2, current->specular);
+        } else if (current != NULL && strncmp(statement, "Ke", 2) == 0 &&
+                   (statement[2] == ' ' || statement[2] == '\t')) {
+            current->emissive = parse_color(statement + 2, current->emissive);
+        } else if (current != NULL && strncmp(statement, "Tf", 2) == 0 &&
+                   (statement[2] == ' ' || statement[2] == '\t')) {
+            current->transmission =
+                parse_color(statement + 2, current->transmission);
+        } else if (current != NULL && strncmp(statement, "Ns", 2) == 0 &&
+                   (statement[2] == ' ' || statement[2] == '\t')) {
+            sscanf(statement + 2, "%lf", &current->shininess);
+        } else if (current != NULL && strncmp(statement, "Ni", 2) == 0 &&
+                   (statement[2] == ' ' || statement[2] == '\t')) {
+            sscanf(statement + 2, "%lf", &current->optical_density);
+        } else if (current != NULL && statement[0] == 'd' &&
+                   (statement[1] == ' ' || statement[1] == '\t')) {
+            sscanf(statement + 1, "%lf", &current->opacity);
+        } else if (current != NULL && strncmp(statement, "Tr", 2) == 0 &&
+                   (statement[2] == ' ' || statement[2] == '\t')) {
+            double transparency;
+            if (sscanf(statement + 2, "%lf", &transparency) == 1)
+                current->opacity = 1. - transparency;
+        } else if (current != NULL && strncmp(statement, "illum", 5) == 0 &&
+                   (statement[5] == ' ' || statement[5] == '\t')) {
+            sscanf(statement + 5, "%d", &current->illumination);
+        } else if (current != NULL && strncmp(statement, "map_Ka", 6) == 0 &&
+                   (statement[6] == ' ' || statement[6] == '\t')) {
+            apply_texture_color(path, statement + 6, &current->ambient);
+        } else if (current != NULL && strncmp(statement, "map_Kd", 6) == 0 &&
+                   (statement[6] == ' ' || statement[6] == '\t')) {
+            apply_texture_color(path, statement + 6, &current->diffuse);
         }
     }
 
@@ -188,7 +308,10 @@ static int parse_index(const char* token, size_t vertex_count, size_t* index) {
     return 1;
 }
 
-static int parse_face(Model* model, size_t* capacity, char* text, Color color) {
+static int parse_face(Model* model,
+                      size_t* capacity,
+                      char* text,
+                      ModelColor color) {
     size_t first;
     size_t previous;
     size_t count = 0;
@@ -230,7 +353,7 @@ int load_obj(Model* model, const char* path) {
     size_t vertex_capacity = 0;
     size_t triangle_capacity = 0;
     MaterialList materials = {0};
-    Color current_color = COLOR_WHITE;
+    ModelColor current_color = {1., 1., 1.};
     char line[4096];
     int success = 1;
 
@@ -256,14 +379,15 @@ int load_obj(Model* model, const char* path) {
                     break;
                 }
                 // A missing material library is not fatal: faces remain white.
-                load_mtl(&materials, material_path, COLOR_WHITE);
+                load_mtl(&materials, material_path, (ModelColor){1., 1., 1.});
                 free(material_path);
             }
         } else if (strncmp(line, "usemtl", 6) == 0 &&
                    (line[6] == ' ' || line[6] == '\t')) {
             const Material* material =
                 find_material(&materials, line_value(line + 6));
-            current_color = material == NULL ? COLOR_WHITE : material->color;
+            current_color = material == NULL ? (ModelColor){1., 1., 1.}
+                                             : material_color(material);
         }
     }
 
@@ -310,6 +434,14 @@ static int compare_depth(const void* left, const void* right) {
     return 0;
 }
 
+// Adapts backend-neutral material colors to the current screen backend. No
+// terminal or grayscale representation leaks into the loaded Model.
+static Color screen_color(ModelColor color) {
+    return (Color){(uint8_t)(color_component(color.red) * 255.),
+                   (uint8_t)(color_component(color.green) * 255.),
+                   (uint8_t)(color_component(color.blue) * 255.)};
+}
+
 void draw_model(const Model* model, ModelTransform transform) {
     if (model == NULL || model->vertices == NULL || model->triangles == NULL ||
         model->vertex_count == 0 || model->triangle_count == 0)
@@ -346,7 +478,7 @@ void draw_model(const Model* model, ModelTransform transform) {
 
         triangles[triangle_count++] = (RenderTriangle){
             {screen(project(a)), screen(project(b)), screen(project(c))},
-            triangle.color,
+            screen_color(triangle.color),
             (a.z + b.z + c.z) / 3.,
         };
     }
