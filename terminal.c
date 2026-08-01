@@ -20,8 +20,9 @@ void show_cursor(void) {
     fflush(stdout);
 }
 
-void print_at(int x, int y, const char* text) {
-    printf("\033[%d;%dH%s", y, x, text);
+void print_at(TerminalCharPos p, const char* text) {
+    // terminal coords are 1-based
+    printf("\033[%d;%dH%s", p.y + 1, p.x + 1, text);
     fflush(stdout);
 }
 

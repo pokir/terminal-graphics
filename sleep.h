@@ -5,4 +5,3 @@
 
 uint64_t get_time_ns(void);
 void sleep_ns(uint64_t ns);
-

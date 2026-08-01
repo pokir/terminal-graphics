@@ -53,6 +53,10 @@ void draw() {
     Pos3D p = {0, 0.5, 2 + dz};
 
     draw_cube(p, 0.9, angle_y, 0);
+
+    PixelPos p1 = {0, 0};
+    PixelPos p2 = {1000, 1000};
+    line(p1, p2);
 }
 
 void cleanup() {
