@@ -6,7 +6,6 @@
 #include "screen.h"
 
 const int TARGET_FPS = 60;
-const uint64_t FRAME_TIME_NS = 1000000000ULL / TARGET_FPS;
 
 typedef struct {
     Pos3D pos;
@@ -71,7 +70,7 @@ void draw_cube(Pos3D p, double s, double angle_y, double angle_z) {
 }
 
 void draw() {
-    Pos3D p = {0, 0, 1 + 0.01 * dz};
+    Pos3D p = {0, 0, 1 + 0.00 * dz};
     draw_cube(p, 0.9, angle_y, 0);
 }
 

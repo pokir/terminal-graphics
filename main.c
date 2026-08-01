@@ -27,10 +27,12 @@ int main() {
   start();
 
   const double delta_time = 1. / TARGET_FPS;
+  const uint64_t frame_time_ns = 1000000000ULL / TARGET_FPS;
+
   uint64_t next_frame = get_time_ns();
 
   for (;;) {
-    next_frame += FRAME_TIME_NS;
+    next_frame += frame_time_ns;
 
     update(delta_time); // user-defined
 
@@ -47,7 +49,7 @@ int main() {
       // frame took too long!
       // if far behind, reset the schedule so the program does not
       // render many frames without sleeping while trying to catch up
-      if (frame_end - next_frame >= FRAME_TIME_NS)
+      if (frame_end - next_frame >= frame_time_ns)
         next_frame = frame_end;
     }
   }
