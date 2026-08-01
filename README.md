@@ -1,3 +1,14 @@
+# terminal-graphics
+
+## Setup
+
+```sh
+mise install # install dependencies
+mise run install # setup git-hooks, etc.
+```
+
+## Notes
+
 user should only implement logic.c (not main.c!)
 
 ~~engine uses screen~~: NO! engine does not use screen (engine is just math)

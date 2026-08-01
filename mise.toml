@@ -1,0 +1,10 @@
+[tools]
+clang-format = "latest"
+lefthook = "latest"
+
+[tasks.format]
+shell = "zsh -c"
+run = "clang-format -i $@"
+
+[tasks.install]
+run = "lefthook install"
