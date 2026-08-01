@@ -3,8 +3,25 @@ clang-format = "latest"
 lefthook = "latest"
 
 [tasks.format]
-shell = "zsh -c"
-run = "clang-format -i $@"
+shell = "bash -c"
+run = """
+{% raw %}
+shopt -s nullglob
+
+if [ $# -gt 0 ]; then
+  files=("$@")
+else
+  files=(*.c *.h *.cpp *.hpp **/*.c **/*.h **/*.cpp **/*.hpp)
+fi
+
+if [ ${#files[@]} -eq 0 ]; then
+  echo "No matching files found."
+  exit 0
+fi
+
+clang-format -i "${files[@]}"
+{% endraw %}
+"""
 
 [tasks.install]
 run = "lefthook install"
