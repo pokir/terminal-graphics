@@ -71,8 +71,6 @@ void draw_cube(Pos3D p, double s, double angle_y, double angle_z) {
 }
 
 void draw() {
-    clear();
-
     Pos3D p = {0, 0, 1 + 0.01 * dz};
     draw_cube(p, 0.9, angle_y, 0);
 }

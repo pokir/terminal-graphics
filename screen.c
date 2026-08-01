@@ -6,7 +6,7 @@
 #include "terminal.h"
 
 void clear() {
-    clear_screen();
+    clear_frame();
 }
 
 static TerminalCharPos pixel_to_cell_coords(PixelPos p) {

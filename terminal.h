@@ -11,9 +11,20 @@ typedef struct {
   int y;
 } TerminalCharPos;
 
-void clear_screen(void);
-void hide_cursor(void);
-void show_cursor(void);
+// must be called before rendering anything (before any stdout write!)
+void init_renderer(void);
+
+// must be called at the end of the program
+void shutdown_renderer(void);
+
+// must be called before every frame
+void begin_frame(void);
+
+// must be called after every frame
+void end_frame(void);
+
 void print_at(TerminalCharPos p, const char *text);
+void put_char_at(TerminalCharPos p, char ch);
+void clear_frame(void);
 
 TerminalSize get_terminal_size(void);

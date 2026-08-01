@@ -7,13 +7,13 @@
 #include "terminal.h"
 
 void start() {
-  hide_cursor();
-  setup();
+  init_renderer();
+  setup(); // user-defined
 }
 
 void end() {
-  cleanup();
-  show_cursor();
+  cleanup(); // user-defined
+  shutdown_renderer();
 }
 
 void sigint_handler(int i) {
@@ -26,21 +26,29 @@ int main() {
 
   start();
 
-  for (;;) {
-    uint64_t frame_start = get_time_ns();
+  const double delta_time = 1. / TARGET_FPS;
+  uint64_t next_frame = get_time_ns();
 
-    update(1. / TARGET_FPS);
-    draw();
+  for (;;) {
+    next_frame += FRAME_TIME_NS;
+
+    update(delta_time); // user-defined
+
+    begin_frame();
+    draw(); // user-defined
+    end_frame();
 
     uint64_t frame_end = get_time_ns();
-    uint64_t elapsed = frame_end - frame_start;
 
-    if (elapsed < FRAME_TIME_NS) {
-      // sleep remaining time of the frame
-      uint64_t sleep_time = FRAME_TIME_NS - elapsed;
-      sleep_ns(sleep_time);
+    // sleep for remaining time of the current frame
+    if (frame_end < next_frame) {
+      sleep_ns(next_frame - frame_end);
     } else {
       // frame took too long!
+      // if far behind, reset the schedule so the program does not
+      // render many frames without sleeping while trying to catch up
+      if (frame_end - next_frame >= FRAME_TIME_NS)
+        next_frame = frame_end;
     }
   }
 
