@@ -20,7 +20,9 @@ TODO: make it so terminal drawing (print_at) remembers which characters changed,
 ## 3D models
 
 Models can be defined as indexed triangle meshes in C or loaded from a
-Wavefront OBJ file. OBJ polygons are triangulated automatically.
+Wavefront OBJ file. OBJ polygons are triangulated automatically. Referenced
+MTL files are loaded relative to the OBJ file, and each material's diffuse
+`Kd` color is applied to faces selected with `usemtl`.
 
 ```c
 #include "model.h"
@@ -28,7 +30,7 @@ Wavefront OBJ file. OBJ polygons are triangulated automatically.
 Model model;
 
 void setup(void) {
-    if (!load_obj(&model, "model.obj", COLOR_CYAN))
+    if (!load_obj(&model, "model.obj"))
         /* handle the load error */;
 }
 

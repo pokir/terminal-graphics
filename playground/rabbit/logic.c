@@ -7,7 +7,7 @@ const int TARGET_FPS = 60;
 static Model rabbit;
 
 void setup() {
-    load_obj(&rabbit, "assets/rabbit/rabbit.obj", COLOR_CYAN);
+    load_obj(&rabbit, "assets/rabbit/rabbit.obj");
 }
 
 double dz = 0;

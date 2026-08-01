@@ -10,6 +10,139 @@ typedef struct {
     double depth;
 } RenderTriangle;
 
+typedef struct {
+    char* name;
+    Color color;
+} Material;
+
+typedef struct {
+    Material* items;
+    size_t count;
+    size_t capacity;
+} MaterialList;
+
+static char* copy_string(const char* value) {
+    size_t size = strlen(value) + 1;
+    char* copy = malloc(size);
+    if (copy != NULL)
+        memcpy(copy, value, size);
+    return copy;
+}
+
+static char* line_value(char* text) {
+    while (*text == ' ' || *text == '\t')
+        ++text;
+
+    char* comment = strchr(text, '#');
+    if (comment != NULL)
+        *comment = '\0';
+
+    size_t length = strlen(text);
+    while (length > 0 && (text[length - 1] == ' ' || text[length - 1] == '\t' ||
+                          text[length - 1] == '\r' || text[length - 1] == '\n'))
+        text[--length] = '\0';
+    return text;
+}
+
+static void free_materials(MaterialList* materials) {
+    for (size_t i = 0; i < materials->count; ++i)
+        free(materials->items[i].name);
+    free(materials->items);
+    *materials = (MaterialList){0};
+}
+
+static Material* append_material(MaterialList* materials,
+                                 const char* name,
+                                 Color fallback) {
+    if (materials->count == materials->capacity) {
+        size_t next = materials->capacity == 0 ? 8 : materials->capacity * 2;
+        Material* items = realloc(materials->items, next * sizeof(*items));
+        if (items == NULL)
+            return NULL;
+        materials->items = items;
+        materials->capacity = next;
+    }
+
+    char* owned_name = copy_string(name);
+    if (owned_name == NULL)
+        return NULL;
+
+    Material* material = &materials->items[materials->count++];
+    *material = (Material){owned_name, fallback};
+    return material;
+}
+
+static const Material* find_material(const MaterialList* materials,
+                                     const char* name) {
+    for (size_t i = materials->count; i > 0; --i)
+        if (strcmp(materials->items[i - 1].name, name) == 0)
+            return &materials->items[i - 1];
+    return NULL;
+}
+
+static uint8_t color_component(double value) {
+    if (value <= 0.)
+        return 0;
+    if (value >= 1.)
+        return 255;
+    return (uint8_t)(value * 255. + 0.5);
+}
+
+static int load_mtl(MaterialList* materials, const char* path, Color fallback) {
+    FILE* file = fopen(path, "r");
+    if (file == NULL)
+        return 0;
+
+    char line[4096];
+    Material* current = NULL;
+    int success = 1;
+
+    while (success && fgets(line, sizeof(line), file) != NULL) {
+        char* statement = line;
+        while (*statement == ' ' || *statement == '\t')
+            ++statement;
+
+        if (strncmp(statement, "newmtl", 6) == 0 &&
+            (statement[6] == ' ' || statement[6] == '\t')) {
+            char* name = line_value(statement + 6);
+            if (*name == '\0' ||
+                (current = append_material(materials, name, fallback)) == NULL)
+                success = 0;
+        } else if (current != NULL && strncmp(statement, "Kd", 2) == 0 &&
+                   (statement[2] == ' ' || statement[2] == '\t')) {
+            double red;
+            double green;
+            double blue;
+            if (sscanf(statement + 2, "%lf %lf %lf", &red, &green, &blue) == 3)
+                current->color =
+                    (Color){color_component(red), color_component(green),
+                            color_component(blue)};
+        }
+    }
+
+    if (ferror(file))
+        success = 0;
+    fclose(file);
+    return success;
+}
+
+static char* relative_path(const char* obj_path, const char* referenced_path) {
+    if (referenced_path[0] == '/')
+        return copy_string(referenced_path);
+
+    const char* slash = strrchr(obj_path, '/');
+    size_t directory_length =
+        slash == NULL ? 0 : (size_t)(slash - obj_path + 1);
+    size_t referenced_length = strlen(referenced_path);
+    char* path = malloc(directory_length + referenced_length + 1);
+    if (path == NULL)
+        return NULL;
+
+    memcpy(path, obj_path, directory_length);
+    memcpy(path + directory_length, referenced_path, referenced_length + 1);
+    return path;
+}
+
 static int append_vertex(Model* model, size_t* capacity, Pos3D vertex) {
     if (model->vertex_count == *capacity) {
         size_t next = *capacity == 0 ? 64 : *capacity * 2;
@@ -84,7 +217,7 @@ static int parse_face(Model* model, size_t* capacity, char* text, Color color) {
     return count >= 3;
 }
 
-int load_obj(Model* model, const char* path, Color color) {
+int load_obj(Model* model, const char* path) {
     if (model == NULL || path == NULL)
         return 0;
 
@@ -96,6 +229,8 @@ int load_obj(Model* model, const char* path, Color color) {
     Model loaded = {0};
     size_t vertex_capacity = 0;
     size_t triangle_capacity = 0;
+    MaterialList materials = {0};
+    Color current_color = COLOR_WHITE;
     char line[4096];
     int success = 1;
 
@@ -107,14 +242,35 @@ int load_obj(Model* model, const char* path, Color color) {
                 !append_vertex(&loaded, &vertex_capacity, vertex))
                 success = 0;
         } else if (line[0] == 'f' && (line[1] == ' ' || line[1] == '\t')) {
-            if (!parse_face(&loaded, &triangle_capacity, line + 1, color))
+            if (!parse_face(&loaded, &triangle_capacity, line + 1,
+                            current_color))
                 success = 0;
+        } else if (strncmp(line, "mtllib", 6) == 0 &&
+                   (line[6] == ' ' || line[6] == '\t')) {
+            char* names = line_value(line + 6);
+            for (char* name = strtok(names, " \t"); name != NULL;
+                 name = strtok(NULL, " \t")) {
+                char* material_path = relative_path(path, name);
+                if (material_path == NULL) {
+                    success = 0;
+                    break;
+                }
+                // A missing material library is not fatal: faces remain white.
+                load_mtl(&materials, material_path, COLOR_WHITE);
+                free(material_path);
+            }
+        } else if (strncmp(line, "usemtl", 6) == 0 &&
+                   (line[6] == ' ' || line[6] == '\t')) {
+            const Material* material =
+                find_material(&materials, line_value(line + 6));
+            current_color = material == NULL ? COLOR_WHITE : material->color;
         }
     }
 
     if (ferror(file))
         success = 0;
     fclose(file);
+    free_materials(&materials);
 
     if (!success || loaded.vertex_count == 0 || loaded.triangle_count == 0) {
         free_model(&loaded);

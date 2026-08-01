@@ -1,7 +1,7 @@
 # 3ds Max Wavefront OBJ Exporter v0.97b - (c)2007 guruware
 # File Created: 03.01.2012 11:32:32
 
-mtllib 12953_ChocolateRabbit_v1.mtl
+mtllib rabbit.mtl
 
 #
 # object chocolate_rabbit
