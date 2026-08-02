@@ -1,5 +1,6 @@
 #include "model.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -437,9 +438,13 @@ static int compare_depth(const void* left, const void* right) {
 // Adapts backend-neutral material colors to the current screen backend. No
 // terminal or grayscale representation leaks into the loaded Model.
 static Color screen_color(ModelColor color) {
-    return (Color){(uint8_t)(color_component(color.red) * 255.),
-                   (uint8_t)(color_component(color.green) * 255.),
-                   (uint8_t)(color_component(color.blue) * 255.)};
+    // Material colors are kept in a normalized linear space. ANSI truecolor
+    // values are sRGB encoded, otherwise darker materials appear nearly black.
+    double red = pow(color_component(color.red), 1. / 2.2);
+    double green = pow(color_component(color.green), 1. / 2.2);
+    double blue = pow(color_component(color.blue), 1. / 2.2);
+    return (Color){(uint8_t)(red * 255. + 0.5), (uint8_t)(green * 255. + 0.5),
+                   (uint8_t)(blue * 255. + 0.5)};
 }
 
 void draw_model(const Model* model, ModelTransform transform) {
