@@ -147,9 +147,13 @@ void line(PixelPos p1, PixelPos p2, Color color) {
     }
 }
 
-static long long edge(TerminalCharPos a, TerminalCharPos b, int x, int y) {
-    return (long long)(x - a.x) * (b.y - a.y) -
-           (long long)(y - a.y) * (b.x - a.x);
+static double triangle_edge(double ax,
+                            double ay,
+                            double bx,
+                            double by,
+                            double x,
+                            double y) {
+    return (x - ax) * (by - ay) - (y - ay) * (bx - ax);
 }
 
 void fill_triangle(PixelPos p1, PixelPos p2, PixelPos p3, Color color) {
@@ -157,25 +161,17 @@ void fill_triangle(PixelPos p1, PixelPos p2, PixelPos p3, Color color) {
     if (!valid_terminal_size(size))
         return;
 
-    TerminalCharPos a = pixel_to_cell(p1, size);
-    TerminalCharPos b = pixel_to_cell(p2, size);
-    TerminalCharPos c = pixel_to_cell(p3, size);
+    double ax = (double)p1.x * size.width / size.width_in_pixels;
+    double ay = (double)p1.y * size.height / size.height_in_pixels;
+    double bx = (double)p2.x * size.width / size.width_in_pixels;
+    double by = (double)p2.y * size.height / size.height_in_pixels;
+    double cx = (double)p3.x * size.width / size.width_in_pixels;
+    double cy = (double)p3.y * size.height / size.height_in_pixels;
 
-    int left = a.x;
-    int right = a.x;
-    int top = a.y;
-    int bottom = a.y;
-    TerminalCharPos points[] = {b, c};
-    for (size_t i = 0; i < sizeof(points) / sizeof(points[0]); ++i) {
-        if (points[i].x < left)
-            left = points[i].x;
-        if (points[i].x > right)
-            right = points[i].x;
-        if (points[i].y < top)
-            top = points[i].y;
-        if (points[i].y > bottom)
-            bottom = points[i].y;
-    }
+    int left = (int)floor(fmin(ax, fmin(bx, cx)));
+    int right = (int)floor(fmax(ax, fmax(bx, cx)));
+    int top = (int)floor(fmin(ay, fmin(by, cy)));
+    int bottom = (int)floor(fmax(ay, fmax(by, cy)));
 
     if (right < 0 || left >= size.width || bottom < 0 || top >= size.height)
         return;
@@ -188,8 +184,8 @@ void fill_triangle(PixelPos p1, PixelPos p2, PixelPos p3, Color color) {
     if (bottom >= size.height)
         bottom = size.height - 1;
 
-    long long area = edge(a, b, c.x, c.y);
-    if (area == 0) {
+    double area = triangle_edge(ax, ay, bx, by, cx, cy);
+    if (area == 0.) {
         line(p1, p2, color);
         line(p2, p3, color);
         line(p3, p1, color);
@@ -198,12 +194,22 @@ void fill_triangle(PixelPos p1, PixelPos p2, PixelPos p3, Color color) {
 
     for (int y = top; y <= bottom; ++y) {
         for (int x = left; x <= right; ++x) {
-            long long ab = edge(a, b, x, y);
-            long long bc = edge(b, c, x, y);
-            long long ca = edge(c, a, x, y);
-            if ((ab >= 0 && bc >= 0 && ca >= 0) ||
-                (ab <= 0 && bc <= 0 && ca <= 0))
-                put_color_at((TerminalCharPos){x, y}, color);
+            for (int sy = 0; sy < TERMINAL_SUBPIXEL_GRID; ++sy) {
+                for (int sx = 0; sx < TERMINAL_SUBPIXEL_GRID; ++sx) {
+                    double sample_x = x + (sx + 0.5) / TERMINAL_SUBPIXEL_GRID;
+                    double sample_y = y + (sy + 0.5) / TERMINAL_SUBPIXEL_GRID;
+                    double ab =
+                        triangle_edge(ax, ay, bx, by, sample_x, sample_y);
+                    double bc =
+                        triangle_edge(bx, by, cx, cy, sample_x, sample_y);
+                    double ca =
+                        triangle_edge(cx, cy, ax, ay, sample_x, sample_y);
+                    if ((ab >= 0. && bc >= 0. && ca >= 0.) ||
+                        (ab <= 0. && bc <= 0. && ca <= 0.))
+                        put_rgb_subpixel_at((TerminalCharPos){x, y}, sx, sy,
+                                            color.red, color.green, color.blue);
+                }
+            }
         }
     }
 }

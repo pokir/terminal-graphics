@@ -10,11 +10,15 @@
 #include <string.h>
 
 typedef struct {
-    char glyph;
     unsigned char red;
     unsigned char green;
     unsigned char blue;
     unsigned char colored;
+} TerminalSubpixel;
+
+typedef struct {
+    char glyph;
+    TerminalSubpixel subpixels[TERMINAL_SUBPIXEL_GRID][TERMINAL_SUBPIXEL_GRID];
 } TerminalCell;
 
 static TerminalCell* screen = NULL;
@@ -46,8 +50,9 @@ void init_renderer(void) {
     // end_frame) this makes it so newlines ('\n') don't trigger a flush
     setvbuf(stdout, NULL, _IOFBF, 1024 * 1024);
 
-    // hide cursor and clear the terminal once
-    fputs("\033[?25l\033[2J\033[H", stdout);
+    // Hide the cursor, set an explicit black background for MSAA resolution,
+    // and clear the terminal using that background.
+    fputs("\033[?25l\033[48;2;0;0;0m\033[2J\033[H", stdout);
 }
 
 void begin_frame(void) {
@@ -94,8 +99,29 @@ void put_rgb_at(TerminalCharPos p, uint8_t red, uint8_t green, uint8_t blue) {
     if (p.x < 0 || p.x >= screen_width || p.y < 0 || p.y >= screen_height)
         return;
 
-    screen[(size_t)p.y * screen_width + p.x] =
-        (TerminalCell){'#', red, green, blue, 1};
+    TerminalCell* cell = &screen[(size_t)p.y * screen_width + p.x];
+    cell->glyph = '#';
+    for (int y = 0; y < TERMINAL_SUBPIXEL_GRID; ++y)
+        for (int x = 0; x < TERMINAL_SUBPIXEL_GRID; ++x)
+            cell->subpixels[y][x] = (TerminalSubpixel){red, green, blue, 1};
+}
+
+void put_rgb_subpixel_at(TerminalCharPos p,
+                         int subpixel_x,
+                         int subpixel_y,
+                         uint8_t red,
+                         uint8_t green,
+                         uint8_t blue) {
+    if (screen == NULL || p.x < 0 || p.x >= screen_width || p.y < 0 ||
+        p.y >= screen_height || subpixel_x < 0 ||
+        subpixel_x >= TERMINAL_SUBPIXEL_GRID || subpixel_y < 0 ||
+        subpixel_y >= TERMINAL_SUBPIXEL_GRID)
+        return;
+
+    TerminalCell* cell = &screen[(size_t)p.y * screen_width + p.x];
+    cell->glyph = '#';
+    cell->subpixels[subpixel_y][subpixel_x] =
+        (TerminalSubpixel){red, green, blue, 1};
 }
 
 void clear_frame(void) {
@@ -124,16 +150,41 @@ void end_frame(void) {
     for (int y = 0; y < screen_height; ++y) {
         for (int x = 0; x < screen_width; ++x) {
             TerminalCell cell = screen[(size_t)y * screen_width + x];
-            if (cell.colored && (!color_active || cell.red != red ||
-                                 cell.green != green || cell.blue != blue)) {
-                fprintf(stdout, "\033[38;2;%u;%u;%um", cell.red, cell.green,
-                        cell.blue);
+            unsigned int resolved_red = 0;
+            unsigned int resolved_green = 0;
+            unsigned int resolved_blue = 0;
+            int coverage = 0;
+            for (int sy = 0; sy < TERMINAL_SUBPIXEL_GRID; ++sy) {
+                for (int sx = 0; sx < TERMINAL_SUBPIXEL_GRID; ++sx) {
+                    TerminalSubpixel sample = cell.subpixels[sy][sx];
+                    if (!sample.colored)
+                        continue;
+                    resolved_red += sample.red;
+                    resolved_green += sample.green;
+                    resolved_blue += sample.blue;
+                    ++coverage;
+                }
+            }
+
+            const int sample_count =
+                TERMINAL_SUBPIXEL_GRID * TERMINAL_SUBPIXEL_GRID;
+            resolved_red = (resolved_red + sample_count / 2) / sample_count;
+            resolved_green = (resolved_green + sample_count / 2) / sample_count;
+            resolved_blue = (resolved_blue + sample_count / 2) / sample_count;
+
+            if (coverage > 0 &&
+                (!color_active || resolved_red != red ||
+                 resolved_green != green || resolved_blue != blue)) {
+                fprintf(stdout, "\033[38;2;%u;%u;%um", resolved_red,
+                        resolved_green, resolved_blue);
                 color_active = 1;
-                red = cell.red;
-                green = cell.green;
-                blue = cell.blue;
-            } else if (!cell.colored && color_active) {
-                fputs("\033[0m", stdout);
+                red = (uint8_t)resolved_red;
+                green = (uint8_t)resolved_green;
+                blue = (uint8_t)resolved_blue;
+            } else if (coverage == 0 && color_active) {
+                // Reset only the foreground; keep the explicit black
+                // background active across blank cells and future frames.
+                fputs("\033[39m", stdout);
                 color_active = 0;
             }
             fputc(cell.glyph, stdout);
@@ -146,7 +197,7 @@ void end_frame(void) {
     }
 
     if (color_active)
-        fputs("\033[0m", stdout);
+        fputs("\033[39m", stdout);
 
     fflush(stdout);
 }

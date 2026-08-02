@@ -13,6 +13,8 @@ typedef struct {
     int y;
 } TerminalCharPos;
 
+#define TERMINAL_SUBPIXEL_GRID 4
+
 // must be called before rendering anything (before any stdout write!)
 void init_renderer(void);
 
@@ -27,6 +29,12 @@ void end_frame(void);
 
 // Writes a cell using an ANSI 24-bit foreground color.
 void put_rgb_at(TerminalCharPos p, uint8_t red, uint8_t green, uint8_t blue);
+void put_rgb_subpixel_at(TerminalCharPos p,
+                         int subpixel_x,
+                         int subpixel_y,
+                         uint8_t red,
+                         uint8_t green,
+                         uint8_t blue);
 void print_at(TerminalCharPos p, const char* text);
 void put_char_at(TerminalCharPos p, char ch);
 void clear_frame(void);
