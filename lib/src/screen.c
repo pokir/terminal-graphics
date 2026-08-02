@@ -25,29 +25,18 @@ PixelSize screen_size(void) {
     return (PixelSize){size.width_in_pixels, size.height_in_pixels};
 }
 
-static char color_to_ascii(Color color) {
-    static const char ramp[] = " .:-=+*#%@";
-    unsigned int luminance =
-        2126U * color.red + 7152U * color.green + 722U * color.blue;
-    size_t last = sizeof(ramp) - 2;
-    size_t index = (luminance * last + 1275000U) / 2550000U;
-    return ramp[index];
+static void put_color_at(TerminalCharPos p, Color color) {
+    put_rgb_at(p, color.red, color.green, color.blue);
 }
 
 void clear(Color color) {
-    char ascii = color_to_ascii(color);
-    if (ascii == ' ') {
-        clear_frame();
-        return;
-    }
-
     TerminalSize size = get_terminal_size();
     if (!valid_terminal_size(size))
         return;
 
     for (int y = 0; y < size.height; ++y)
         for (int x = 0; x < size.width; ++x)
-            put_char_at((TerminalCharPos){x, y}, ascii);
+            put_color_at((TerminalCharPos){x, y}, color);
 }
 
 static TerminalCharPos pixel_to_cell(PixelPos p, TerminalSize size) {
@@ -68,7 +57,7 @@ void pixel(PixelPos p, Color color) {
 
     TerminalCharPos cell = pixel_to_cell(p, size);
     if (cell_is_visible(cell, size))
-        put_char_at(cell, color_to_ascii(color));
+        put_color_at(cell, color);
 }
 
 static int clip_edge(double p, double q, double* start, double* end) {
@@ -138,10 +127,8 @@ void line(PixelPos p1, PixelPos p2, Color color) {
     int step_y = (y0 < y1) ? 1 : -1;
 
     int error = dx - dy;
-    char ascii = color_to_ascii(color);
-
     for (;;) {
-        put_char_at((TerminalCharPos){x0, y0}, ascii);
+        put_color_at((TerminalCharPos){x0, y0}, color);
 
         if (x0 == x1 && y0 == y1)
             break;
@@ -209,7 +196,6 @@ void fill_triangle(PixelPos p1, PixelPos p2, PixelPos p3, Color color) {
         return;
     }
 
-    char ascii = color_to_ascii(color);
     for (int y = top; y <= bottom; ++y) {
         for (int x = left; x <= right; ++x) {
             long long ab = edge(a, b, x, y);
@@ -217,7 +203,7 @@ void fill_triangle(PixelPos p1, PixelPos p2, PixelPos p3, Color color) {
             long long ca = edge(c, a, x, y);
             if ((ab >= 0 && bc >= 0 && ca >= 0) ||
                 (ab <= 0 && bc <= 0 && ca <= 0))
-                put_char_at((TerminalCharPos){x, y}, ascii);
+                put_color_at((TerminalCharPos){x, y}, color);
         }
     }
 }
@@ -256,8 +242,7 @@ void fill_rectangle(PixelPos p1, PixelPos p2, Color color) {
     if (bottom >= size.height)
         bottom = size.height - 1;
 
-    char ascii = color_to_ascii(color);
     for (int y = top; y <= bottom; ++y)
         for (int x = left; x <= right; ++x)
-            put_char_at((TerminalCharPos){x, y}, ascii);
+            put_color_at((TerminalCharPos){x, y}, color);
 }

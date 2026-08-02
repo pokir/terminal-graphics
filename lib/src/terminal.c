@@ -9,7 +9,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-static char* screen = NULL;
+typedef struct {
+    char glyph;
+    unsigned char red;
+    unsigned char green;
+    unsigned char blue;
+    unsigned char colored;
+} TerminalCell;
+
+static TerminalCell* screen = NULL;
 static int screen_width = 0;
 static int screen_height = 0;
 
@@ -22,7 +30,7 @@ static int resize_screen(int width, int height) {
 
     size_t size = (size_t)width * (size_t)height;
 
-    char* new_screen = realloc(screen, size);
+    TerminalCell* new_screen = realloc(screen, size * sizeof(*screen));
     if (new_screen == NULL)
         return 0;
 
@@ -48,7 +56,7 @@ void begin_frame(void) {
     if (!resize_screen(s.width, s.height))
         return;
 
-    memset(screen, ' ', (size_t)screen_width * (size_t)screen_height);
+    clear_frame();
 }
 
 void print_at(TerminalCharPos p, const char* text) {
@@ -61,7 +69,8 @@ void print_at(TerminalCharPos p, const char* text) {
 
     while (*text != '\0' && x < screen_width) {
         if (x >= 0)
-            screen[(size_t)p.y * screen_width + x] = *text;
+            screen[(size_t)p.y * screen_width + x] =
+                (TerminalCell){.glyph = *text};
 
         ++x;
         ++text;
@@ -75,14 +84,27 @@ void put_char_at(TerminalCharPos p, char ch) {
     if (p.x < 0 || p.x >= screen_width || p.y < 0 || p.y >= screen_height)
         return;
 
-    screen[(size_t)p.y * screen_width + p.x] = ch;
+    screen[(size_t)p.y * screen_width + p.x] = (TerminalCell){.glyph = ch};
+}
+
+void put_rgb_at(TerminalCharPos p, uint8_t red, uint8_t green, uint8_t blue) {
+    if (screen == NULL)
+        return;
+
+    if (p.x < 0 || p.x >= screen_width || p.y < 0 || p.y >= screen_height)
+        return;
+
+    screen[(size_t)p.y * screen_width + p.x] =
+        (TerminalCell){'#', red, green, blue, 1};
 }
 
 void clear_frame(void) {
     if (screen == NULL)
         return;
 
-    memset(screen, ' ', (size_t)screen_width * (size_t)screen_height);
+    size_t size = (size_t)screen_width * (size_t)screen_height;
+    for (size_t i = 0; i < size; ++i)
+        screen[i] = (TerminalCell){.glyph = ' '};
 }
 
 void end_frame(void) {
@@ -92,16 +114,39 @@ void end_frame(void) {
     // move to the top-left instead of clearing the terminal
     fputs("\033[H", stdout);
 
-    // write to stdout row by row (to add '\n' separators)
+    int color_active = 0;
+    uint8_t red = 0;
+    uint8_t green = 0;
+    uint8_t blue = 0;
+
+    // Write cells row by row, emitting a truecolor escape only when the color
+    // changes instead of once for every character.
     for (int y = 0; y < screen_height; ++y) {
-        fwrite(screen + (size_t)y * screen_width, 1, (size_t)screen_width,
-               stdout);
+        for (int x = 0; x < screen_width; ++x) {
+            TerminalCell cell = screen[(size_t)y * screen_width + x];
+            if (cell.colored && (!color_active || cell.red != red ||
+                                 cell.green != green || cell.blue != blue)) {
+                fprintf(stdout, "\033[38;2;%u;%u;%um", cell.red, cell.green,
+                        cell.blue);
+                color_active = 1;
+                red = cell.red;
+                green = cell.green;
+                blue = cell.blue;
+            } else if (!cell.colored && color_active) {
+                fputs("\033[0m", stdout);
+                color_active = 0;
+            }
+            fputc(cell.glyph, stdout);
+        }
 
         // avoid printing a newline after the final row because that can scroll
         // some terminals
         if (y + 1 < screen_height)
             fputc('\n', stdout);
     }
+
+    if (color_active)
+        fputs("\033[0m", stdout);
 
     fflush(stdout);
 }
@@ -113,7 +158,7 @@ void shutdown_renderer(void) {
     screen_height = 0;
 
     // restore cursor
-    fputs("\033[?25h", stdout);
+    fputs("\033[0m\033[?25h", stdout);
     fflush(stdout);
 }
 
