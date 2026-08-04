@@ -35,6 +35,13 @@ void put_rgb_subpixel_at(TerminalCharPos p,
                          uint8_t red,
                          uint8_t green,
                          uint8_t blue);
+void put_rgb_subpixel_at_depth(TerminalCharPos p,
+                               int subpixel_x,
+                               int subpixel_y,
+                               double depth,
+                               uint8_t red,
+                               uint8_t green,
+                               uint8_t blue);
 void print_at(TerminalCharPos p, const char* text);
 void put_char_at(TerminalCharPos p, char ch);
 void clear_frame(void);

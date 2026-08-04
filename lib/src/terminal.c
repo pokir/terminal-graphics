@@ -1,5 +1,6 @@
 #include "terminal.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/ioctl.h>
@@ -14,6 +15,7 @@ typedef struct {
     unsigned char green;
     unsigned char blue;
     unsigned char colored;
+    double depth;
 } TerminalSubpixel;
 
 typedef struct {
@@ -103,7 +105,8 @@ void put_rgb_at(TerminalCharPos p, uint8_t red, uint8_t green, uint8_t blue) {
     cell->glyph = '#';
     for (int y = 0; y < TERMINAL_SUBPIXEL_GRID; ++y)
         for (int x = 0; x < TERMINAL_SUBPIXEL_GRID; ++x)
-            cell->subpixels[y][x] = (TerminalSubpixel){red, green, blue, 1};
+            cell->subpixels[y][x] =
+                (TerminalSubpixel){red, green, blue, 1, -INFINITY};
 }
 
 void put_rgb_subpixel_at(TerminalCharPos p,
@@ -121,7 +124,29 @@ void put_rgb_subpixel_at(TerminalCharPos p,
     TerminalCell* cell = &screen[(size_t)p.y * screen_width + p.x];
     cell->glyph = '#';
     cell->subpixels[subpixel_y][subpixel_x] =
-        (TerminalSubpixel){red, green, blue, 1};
+        (TerminalSubpixel){red, green, blue, 1, -INFINITY};
+}
+
+void put_rgb_subpixel_at_depth(TerminalCharPos p,
+                               int subpixel_x,
+                               int subpixel_y,
+                               double depth,
+                               uint8_t red,
+                               uint8_t green,
+                               uint8_t blue) {
+    if (screen == NULL || p.x < 0 || p.x >= screen_width || p.y < 0 ||
+        p.y >= screen_height || subpixel_x < 0 ||
+        subpixel_x >= TERMINAL_SUBPIXEL_GRID || subpixel_y < 0 ||
+        subpixel_y >= TERMINAL_SUBPIXEL_GRID)
+        return;
+
+    TerminalCell* cell = &screen[(size_t)p.y * screen_width + p.x];
+    TerminalSubpixel* sample = &cell->subpixels[subpixel_y][subpixel_x];
+    if (depth >= sample->depth)
+        return;
+
+    cell->glyph = '#';
+    *sample = (TerminalSubpixel){red, green, blue, 1, depth};
 }
 
 void clear_frame(void) {
@@ -129,8 +154,12 @@ void clear_frame(void) {
         return;
 
     size_t size = (size_t)screen_width * (size_t)screen_height;
-    for (size_t i = 0; i < size; ++i)
+    for (size_t i = 0; i < size; ++i) {
         screen[i] = (TerminalCell){.glyph = ' '};
+        for (int y = 0; y < TERMINAL_SUBPIXEL_GRID; ++y)
+            for (int x = 0; x < TERMINAL_SUBPIXEL_GRID; ++x)
+                screen[i].subpixels[y][x].depth = INFINITY;
+    }
 }
 
 void end_frame(void) {

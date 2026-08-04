@@ -37,6 +37,13 @@ void pixel(PixelPos p, Color color);
 void line(PixelPos p1, PixelPos p2, Color color);
 
 void fill_triangle(PixelPos p1, PixelPos p2, PixelPos p3, Color color);
+void fill_triangle_at_depth(PixelPos p1,
+                            double depth1,
+                            PixelPos p2,
+                            double depth2,
+                            PixelPos p3,
+                            double depth3,
+                            Color color);
 
 void rectangle(PixelPos p1, PixelPos p2, Color color);
 

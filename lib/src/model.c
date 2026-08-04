@@ -11,6 +11,7 @@
 typedef struct {
     PixelPos points[3];
     Color color;
+    double depths[3];
     double depth;
 } RenderTriangle;
 
@@ -484,14 +485,17 @@ void draw_model(const Model* model, ModelTransform transform) {
         triangles[triangle_count++] = (RenderTriangle){
             {screen(project(a)), screen(project(b)), screen(project(c))},
             screen_color(triangle.color),
+            {a.z, b.z, c.z},
             (a.z + b.z + c.z) / 3.,
         };
     }
 
     qsort(triangles, triangle_count, sizeof(*triangles), compare_depth);
     for (size_t i = 0; i < triangle_count; ++i)
-        fill_triangle(triangles[i].points[0], triangles[i].points[1],
-                      triangles[i].points[2], triangles[i].color);
+        fill_triangle_at_depth(triangles[i].points[0], triangles[i].depths[0],
+                               triangles[i].points[1], triangles[i].depths[1],
+                               triangles[i].points[2], triangles[i].depths[2],
+                               triangles[i].color);
 
     free(triangles);
     free(vertices);

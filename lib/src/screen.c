@@ -156,7 +156,14 @@ static double triangle_edge(double ax,
     return (x - ax) * (by - ay) - (y - ay) * (bx - ax);
 }
 
-void fill_triangle(PixelPos p1, PixelPos p2, PixelPos p3, Color color) {
+static void fill_triangle_internal(PixelPos p1,
+                                   double depth1,
+                                   PixelPos p2,
+                                   double depth2,
+                                   PixelPos p3,
+                                   double depth3,
+                                   Color color,
+                                   int depth_test) {
     TerminalSize size = get_terminal_size();
     if (!valid_terminal_size(size))
         return;
@@ -205,13 +212,45 @@ void fill_triangle(PixelPos p1, PixelPos p2, PixelPos p3, Color color) {
                     double ca =
                         triangle_edge(cx, cy, ax, ay, sample_x, sample_y);
                     if ((ab >= 0. && bc >= 0. && ca >= 0.) ||
-                        (ab <= 0. && bc <= 0. && ca <= 0.))
-                        put_rgb_subpixel_at((TerminalCharPos){x, y}, sx, sy,
-                                            color.red, color.green, color.blue);
+                        (ab <= 0. && bc <= 0. && ca <= 0.)) {
+                        if (depth_test) {
+                            double weight1 = bc / area;
+                            double weight2 = ca / area;
+                            double weight3 = ab / area;
+                            double inverse_depth = weight1 / depth1 +
+                                                   weight2 / depth2 +
+                                                   weight3 / depth3;
+                            if (inverse_depth > 0.)
+                                put_rgb_subpixel_at_depth(
+                                    (TerminalCharPos){x, y}, sx, sy,
+                                    1. / inverse_depth, color.red, color.green,
+                                    color.blue);
+                        } else {
+                            put_rgb_subpixel_at((TerminalCharPos){x, y}, sx, sy,
+                                                color.red, color.green,
+                                                color.blue);
+                        }
+                    }
                 }
             }
         }
     }
+}
+
+void fill_triangle(PixelPos p1, PixelPos p2, PixelPos p3, Color color) {
+    fill_triangle_internal(p1, 1., p2, 1., p3, 1., color, 0);
+}
+
+void fill_triangle_at_depth(PixelPos p1,
+                            double depth1,
+                            PixelPos p2,
+                            double depth2,
+                            PixelPos p3,
+                            double depth3,
+                            Color color) {
+    if (depth1 <= 0. || depth2 <= 0. || depth3 <= 0.)
+        return;
+    fill_triangle_internal(p1, depth1, p2, depth2, p3, depth3, color, 1);
 }
 
 void rectangle(PixelPos p1, PixelPos p2, Color color) {
