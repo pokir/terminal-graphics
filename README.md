@@ -28,14 +28,41 @@ void setup(void) {
 }
 
 void draw(void) {
-    draw_model(&model, (ModelTransform){
-                           .position = {0., 0., 3.},
-                           .rotation = {0., angle_y, 0.},
-                           .scale = 1.,
-                       });
+    mesh(&model, &(ModelTransform){
+                     .position = {0., 0., 3.},
+                     .rotation = {0., angle_y, 0.},
+                     .scale = 1.,
+                 });
 }
 
 void cleanup(void) {
     free_model(&model);
 }
 ```
+
+## Fonts and text
+
+TTF, OTF, and font-collection files can be rasterized as graphics independently
+of the font configured in the terminal:
+
+```c
+#include "font.h"
+
+Font font;
+
+void setup(void) {
+    load_font(&font, "assets/Inter-Regular.ttf");
+}
+
+void draw(void) {
+    text(&font, (PixelPos){20, 20}, 48., COLOR_CYAN, "Hello, world!");
+}
+
+void cleanup(void) {
+    free_font(&font);
+}
+```
+
+`measure_text` returns the layout size in the same physical-pixel coordinate
+space used by the screen API. Text input is UTF-8; available characters depend
+on the loaded font.

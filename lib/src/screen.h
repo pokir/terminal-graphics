@@ -2,6 +2,10 @@
 
 #include <stdint.h>
 
+typedef struct Font Font;
+typedef struct Model Model;
+typedef struct ModelTransform ModelTransform;
+
 typedef struct {
     int x;
     int y;
@@ -48,3 +52,11 @@ void fill_triangle_at_depth(PixelPos p1,
 void rectangle(PixelPos p1, PixelPos p2, Color color);
 
 void fill_rectangle(PixelPos p1, PixelPos p2, Color color);
+
+void text(const Font* font,
+          PixelPos position,
+          double pixel_height,
+          Color color,
+          const char* utf8_text);
+
+void mesh(const Model* model, const ModelTransform* transform);

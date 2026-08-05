@@ -1,6 +1,7 @@
 #include "logic.h"
 
 #include "model.h"
+#include "screen.h"
 
 const int TARGET_FPS = 60;
 
@@ -36,11 +37,11 @@ void update(double dt) {
 }
 
 void draw_cube(Pos3D position, double scale, double angle_y, double angle_z) {
-    draw_model(&cube, (ModelTransform){
-                          .position = position,
-                          .rotation = {0., angle_y, angle_z},
-                          .scale = scale,
-                      });
+    mesh(&cube, &(ModelTransform){
+                    .position = position,
+                    .rotation = {0., angle_y, angle_z},
+                    .scale = scale,
+                });
 }
 
 void draw() {

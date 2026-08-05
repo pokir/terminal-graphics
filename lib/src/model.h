@@ -16,14 +16,14 @@ typedef struct {
     ModelColor color;
 } ModelTriangle;
 
-typedef struct {
+typedef struct Model {
     Pos3D* vertices;
     size_t vertex_count;
     ModelTriangle* triangles;
     size_t triangle_count;
 } Model;
 
-typedef struct {
+typedef struct ModelTransform {
     Pos3D position;
     Pos3D rotation;
     double scale;
@@ -38,6 +38,3 @@ int load_obj(Model* model, const char* path);
 
 // Releases data allocated by load_obj.
 void free_model(Model* model);
-
-// Draws every visible triangle, from farthest to nearest.
-void draw_model(const Model* model, ModelTransform transform);

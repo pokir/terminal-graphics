@@ -149,6 +149,34 @@ void put_rgb_subpixel_at_depth(TerminalCharPos p,
     *sample = (TerminalSubpixel){red, green, blue, 1, depth};
 }
 
+void blend_rgb_subpixel_at(TerminalCharPos p,
+                           int subpixel_x,
+                           int subpixel_y,
+                           uint8_t red,
+                           uint8_t green,
+                           uint8_t blue,
+                           uint8_t alpha) {
+    if (screen == NULL || alpha == 0 || p.x < 0 || p.x >= screen_width ||
+        p.y < 0 || p.y >= screen_height || subpixel_x < 0 ||
+        subpixel_x >= TERMINAL_SUBPIXEL_GRID || subpixel_y < 0 ||
+        subpixel_y >= TERMINAL_SUBPIXEL_GRID)
+        return;
+
+    TerminalCell* cell = &screen[(size_t)p.y * screen_width + p.x];
+    TerminalSubpixel* sample = &cell->subpixels[subpixel_y][subpixel_x];
+    unsigned int inverse_alpha = 255U - alpha;
+    sample->red =
+        (uint8_t)((red * alpha + sample->red * inverse_alpha + 127U) / 255U);
+    sample->green =
+        (uint8_t)((green * alpha + sample->green * inverse_alpha + 127U) /
+                  255U);
+    sample->blue =
+        (uint8_t)((blue * alpha + sample->blue * inverse_alpha + 127U) / 255U);
+    sample->colored = 1;
+    sample->depth = -INFINITY;
+    cell->glyph = '#';
+}
+
 void clear_frame(void) {
     if (screen == NULL)
         return;

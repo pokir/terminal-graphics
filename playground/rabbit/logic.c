@@ -1,6 +1,7 @@
 #include "logic.h"
 
 #include "model.h"
+#include "screen.h"
 
 const int TARGET_FPS = 60;
 
@@ -22,7 +23,7 @@ void draw() {
     ModelTransform rabbit_transform = {
         {0., 0., 15.}, {2. + 3 * dz, 1. + 2 * dz, 0. + dz}, 1.};
 
-    draw_model(&rabbit, rabbit_transform);
+    mesh(&rabbit, &rabbit_transform);
 }
 
 void cleanup() {

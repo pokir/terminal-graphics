@@ -12,7 +12,6 @@ typedef struct {
     PixelPos points[3];
     Color color;
     double depths[3];
-    double depth;
 } RenderTriangle;
 
 typedef struct {
@@ -426,16 +425,6 @@ static Pos3D transform_vertex(Pos3D vertex, ModelTransform transform) {
     return translate(vertex, transform.position);
 }
 
-static int compare_depth(const void* left, const void* right) {
-    const RenderTriangle* a = left;
-    const RenderTriangle* b = right;
-    if (a->depth < b->depth)
-        return 1;
-    if (a->depth > b->depth)
-        return -1;
-    return 0;
-}
-
 // Adapts backend-neutral material colors to the current screen backend. No
 // terminal or grayscale representation leaks into the loaded Model.
 static Color screen_color(ModelColor color) {
@@ -448,9 +437,10 @@ static Color screen_color(ModelColor color) {
                    (uint8_t)(blue * 255. + 0.5)};
 }
 
-void draw_model(const Model* model, ModelTransform transform) {
+void mesh(const Model* model, const ModelTransform* transform) {
     if (model == NULL || model->vertices == NULL || model->triangles == NULL ||
-        model->vertex_count == 0 || model->triangle_count == 0)
+        model->vertex_count == 0 || model->triangle_count == 0 ||
+        transform == NULL)
         return;
 
     Pos3D* vertices = malloc(model->vertex_count * sizeof(*vertices));
@@ -463,7 +453,7 @@ void draw_model(const Model* model, ModelTransform transform) {
     }
 
     for (size_t i = 0; i < model->vertex_count; ++i)
-        vertices[i] = transform_vertex(model->vertices[i], transform);
+        vertices[i] = transform_vertex(model->vertices[i], *transform);
 
     size_t triangle_count = 0;
     for (size_t i = 0; i < model->triangle_count; ++i) {
@@ -486,11 +476,9 @@ void draw_model(const Model* model, ModelTransform transform) {
             {screen(project(a)), screen(project(b)), screen(project(c))},
             screen_color(triangle.color),
             {a.z, b.z, c.z},
-            (a.z + b.z + c.z) / 3.,
         };
     }
 
-    qsort(triangles, triangle_count, sizeof(*triangles), compare_depth);
     for (size_t i = 0; i < triangle_count; ++i)
         fill_triangle_at_depth(triangles[i].points[0], triangles[i].depths[0],
                                triangles[i].points[1], triangles[i].depths[1],
