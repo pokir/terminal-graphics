@@ -415,14 +415,9 @@ void free_model(Model* model) {
     *model = (Model){0};
 }
 
-static Pos3D transform_vertex(Pos3D vertex, ModelTransform transform) {
-    vertex.x *= transform.scale;
-    vertex.y *= transform.scale;
-    vertex.z *= transform.scale;
-    vertex = rotate_yz(vertex, transform.rotation.x);
-    vertex = rotate_xz(vertex, transform.rotation.y);
-    vertex = rotate_xy(vertex, transform.rotation.z);
-    return translate(vertex, transform.position);
+static Pos3D transform_vertex(Pos3D vertex, ModelTransform model_transform) {
+    return transform(vertex, model_transform.position, model_transform.rotation,
+                     model_transform.scale);
 }
 
 // Adapts backend-neutral material colors to the current screen backend. No
