@@ -244,7 +244,10 @@ void end_frame(void) {
                 fputs("\033[39m", stdout);
                 color_active = 0;
             }
-            fputc(cell.glyph, stdout);
+            if (coverage > 0)
+                fputs("█", stdout);
+            else
+                fputc(cell.glyph, stdout);
         }
 
         // avoid printing a newline after the final row because that can scroll

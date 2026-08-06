@@ -133,6 +133,96 @@ PixelSize measure_text(const Font* font,
     return (PixelSize){physical_width, (int)(pixel_height + 0.5)};
 }
 
+FontBitmap rasterize_text(const Font* font,
+                          int pixel_height,
+                          const char* utf8_text) {
+    if (font == NULL || font->implementation == NULL || utf8_text == NULL ||
+        pixel_height <= 0)
+        return (FontBitmap){0};
+
+    FontImplementation* implementation = font->implementation;
+    float scale =
+        stbtt_ScaleForPixelHeight(&implementation->info, (float)pixel_height);
+    double width = 0.;
+    const char* cursor = utf8_text;
+    while (*cursor != '\0') {
+        unsigned int codepoint = next_codepoint(&cursor);
+        int advance;
+        stbtt_GetCodepointHMetrics(&implementation->info, (int)codepoint,
+                                   &advance, NULL);
+        width += advance * scale;
+        if (*cursor != '\0') {
+            const char* next = cursor;
+            unsigned int next_value = next_codepoint(&next);
+            width +=
+                stbtt_GetCodepointKernAdvance(&implementation->info,
+                                              (int)codepoint, (int)next_value) *
+                scale;
+        }
+    }
+
+    int bitmap_width = (int)(width + 1.);
+    uint8_t* pixels = calloc((size_t)bitmap_width * pixel_height, 1);
+    if (pixels == NULL)
+        return (FontBitmap){0};
+
+    int ascent;
+    stbtt_GetFontVMetrics(&implementation->info, &ascent, NULL, NULL);
+    int baseline = (int)(ascent * scale + 0.5);
+    double pen_x = 0.;
+    cursor = utf8_text;
+    while (*cursor != '\0') {
+        unsigned int codepoint = next_codepoint(&cursor);
+        int glyph_width;
+        int glyph_height;
+        int offset_x;
+        int offset_y;
+        unsigned char* glyph = stbtt_GetCodepointBitmap(
+            &implementation->info, scale, scale, (int)codepoint, &glyph_width,
+            &glyph_height, &offset_x, &offset_y);
+        int destination_x = (int)(pen_x + offset_x + 0.5);
+        int destination_y = baseline + offset_y;
+        for (int y = 0; y < glyph_height; ++y) {
+            int target_y = destination_y + y;
+            if (target_y < 0 || target_y >= pixel_height)
+                continue;
+            for (int x = 0; x < glyph_width; ++x) {
+                int target_x = destination_x + x;
+                if (target_x < 0 || target_x >= bitmap_width)
+                    continue;
+                uint8_t alpha = glyph[(size_t)y * glyph_width + x];
+                uint8_t* target =
+                    &pixels[(size_t)target_y * bitmap_width + target_x];
+                if (alpha > *target)
+                    *target = alpha;
+            }
+        }
+        stbtt_FreeBitmap(glyph, NULL);
+
+        int advance;
+        stbtt_GetCodepointHMetrics(&implementation->info, (int)codepoint,
+                                   &advance, NULL);
+        pen_x += advance * scale;
+        if (*cursor != '\0') {
+            const char* next = cursor;
+            unsigned int next_value = next_codepoint(&next);
+            pen_x +=
+                stbtt_GetCodepointKernAdvance(&implementation->info,
+                                              (int)codepoint, (int)next_value) *
+                scale;
+        }
+    }
+
+    return (FontBitmap){pixels, bitmap_width, pixel_height};
+}
+
+void free_font_bitmap(FontBitmap* bitmap) {
+    if (bitmap == NULL)
+        return;
+    free(bitmap->pixels);
+    *bitmap = (FontBitmap){0};
+}
+
 void text(const Font* font,
           PixelPos position,
           double pixel_height,
