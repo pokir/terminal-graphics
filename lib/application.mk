@@ -6,9 +6,9 @@ include $(dir $(lastword $(MAKEFILE_LIST)))library.mk
 HEADERS := $(wildcard *.h)
 SOURCES := $(wildcard *.c)
 
-$(TARGET): $(DEPENDENCIES) $(LIB_HEADERS) $(LIB_SOURCES) $(HEADERS) $(SOURCES)
-	$(CC) $(INCSPATH) \
-		$(LIB_SOURCES) \
+$(TARGET): $(LIBRARY) $(HEADERS) $(SOURCES)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(INCSPATH) \
 		$(SOURCES) \
+		$(LIBRARY) \
 		$(LIBS) \
 		-o $(TARGET)

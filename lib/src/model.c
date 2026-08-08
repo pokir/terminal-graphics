@@ -23,6 +23,10 @@ typedef struct {
     double values[4][4];
 } Matrix;
 
+struct ModelImplementation {
+    const struct aiScene* scene;
+};
+
 static double color_component(double value) {
     if (value <= 0.)
         return 0.;
@@ -233,12 +237,17 @@ int load_model(Model* model, const char* path) {
     Model loaded = {
         .vertices = malloc(vertex_count * sizeof(*loaded.vertices)),
         .triangles = malloc(triangle_capacity * sizeof(*loaded.triangles)),
-        .scene = scene,
+        .implementation = malloc(sizeof(*loaded.implementation)),
     };
-    if (loaded.vertices == NULL || loaded.triangles == NULL) {
-        free_model(&loaded);
+    if (loaded.vertices == NULL || loaded.triangles == NULL ||
+        loaded.implementation == NULL) {
+        aiReleaseImport(scene);
+        free(loaded.vertices);
+        free(loaded.triangles);
+        free(loaded.implementation);
         return 0;
     }
+    loaded.implementation->scene = scene;
 
     size_t vertex_offset = 0;
     size_t triangle_offset = 0;
@@ -269,8 +278,10 @@ void free_model(Model* model) {
 
     free(model->vertices);
     free(model->triangles);
-    if (model->scene != NULL)
-        aiReleaseImport(model->scene);
+    if (model->implementation != NULL) {
+        aiReleaseImport(model->implementation->scene);
+        free(model->implementation);
+    }
     *model = (Model){0};
 }
 

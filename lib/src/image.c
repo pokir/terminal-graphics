@@ -2,7 +2,7 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_FAILURE_USERMSG
-#include "../third_party/stb/stb_image.h"
+#include "stb/stb_image.h"
 
 int image_average_color(const char* path, ModelColor* color) {
     if (path == NULL || color == NULL)

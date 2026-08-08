@@ -14,7 +14,9 @@ include ../../lib/application.mk
 ```
 
 For a custom build rule, include `lib/library.mk`. It provides `LIB_HEADERS`,
-`LIB_SOURCES`, `INCSPATH`, `LIBS`, and `DEPENDENCIES`.
+`LIB_SOURCES`, `LIBRARY`, `INCSPATH`, `LIBS`, and `DEPENDENCIES`. Engine sources
+are compiled separately with private dependency headers; application sources
+only receive the public `lib/src` include path.
 
 ## 3D models
 
@@ -25,9 +27,9 @@ caches the result. Nothing is installed system-wide.
 
 `load_model` accepts every importer enabled by Assimp, including OBJ/MTL,
 glTF/GLB, FBX, Collada, PLY, STL, 3DS, Blender, and many others. Assimp's full
-scene remains available through `model.scene`, including meshes, normals, UVs,
-materials, textures, hierarchy, bones, animations, cameras, lights, and
-metadata. Include `<assimp/scene.h>` when accessing that data directly.
+scene remains retained privately by the model so imported meshes, normals,
+UVs, materials, textures, hierarchy, bones, animations, cameras, lights, and
+metadata are not discarded or exposed as part of the public interface.
 
 ```c
 #include "model.h"

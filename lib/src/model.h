@@ -5,7 +5,7 @@
 
 #include "engine.h"
 
-struct aiScene;
+typedef struct ModelImplementation ModelImplementation;
 
 typedef struct {
     double red;
@@ -23,11 +23,8 @@ typedef struct Model {
     size_t vertex_count;
     ModelTriangle* triangles;
     size_t triangle_count;
-    // Complete source scene retained by Assimp for imported models. Include
-    // <assimp/scene.h> when accessing its meshes, materials, nodes, animations,
-    // textures, cameras, lights, skeletons, or metadata. Procedural models
-    // leave this NULL.
-    const struct aiScene* scene;
+    // Private imported scene data. Procedural models leave this NULL.
+    ModelImplementation* implementation;
 } Model;
 
 typedef struct ModelTransform {

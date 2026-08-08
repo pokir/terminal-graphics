@@ -6,7 +6,7 @@
 #include "terminal.h"
 
 #define STB_TRUETYPE_IMPLEMENTATION
-#include "../third_party/stb/stb_truetype.h"
+#include "stb/stb_truetype.h"
 
 struct FontImplementation {
     unsigned char* data;
