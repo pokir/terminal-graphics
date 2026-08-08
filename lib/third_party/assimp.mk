@@ -1,0 +1,33 @@
+ASSIMP_VERSION := v6.0.5
+ASSIMP_SOURCE := $(PROJECT_ROOT)/.deps/assimp-src
+ASSIMP_BUILD := $(PROJECT_ROOT)/.deps/assimp-build
+ASSIMP_INSTALL := $(PROJECT_ROOT)/.deps/assimp
+ASSIMP_READY := $(ASSIMP_INSTALL)/.ready
+ASSIMP_CMAKE_OPTIONS :=
+
+ifeq ($(shell uname -s),Darwin)
+ASSIMP_CMAKE_OPTIONS += -DCMAKE_CXX_FLAGS=-Wno-unknown-warning-option
+endif
+
+ASSIMP_INCSPATH := -I$(ASSIMP_INSTALL)/include
+ASSIMP_LIBS := -L$(ASSIMP_INSTALL)/lib \
+	-Wl,-rpath,$(ASSIMP_INSTALL)/lib -lassimp
+ASSIMP_DEPENDENCIES := $(ASSIMP_READY)
+
+$(ASSIMP_READY):
+	mkdir -p $(PROJECT_ROOT)/.deps
+	if [ ! -d $(ASSIMP_SOURCE)/.git ]; then git clone --depth 1 --branch $(ASSIMP_VERSION) https://github.com/assimp/assimp.git $(ASSIMP_SOURCE); fi
+	cmake -S $(ASSIMP_SOURCE) -B $(ASSIMP_BUILD) \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX=$(ASSIMP_INSTALL) \
+		-DBUILD_SHARED_LIBS=ON \
+		-DASSIMP_BUILD_TESTS=OFF \
+		-DASSIMP_BUILD_ASSIMP_TOOLS=OFF \
+		-DASSIMP_BUILD_SAMPLES=OFF \
+		-DASSIMP_BUILD_DOCS=OFF \
+		-DASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT=OFF \
+		-DASSIMP_WARNINGS_AS_ERRORS=OFF \
+		$(ASSIMP_CMAKE_OPTIONS)
+	cmake --build $(ASSIMP_BUILD) --parallel 2
+	cmake --install $(ASSIMP_BUILD)
+	touch $(ASSIMP_READY)

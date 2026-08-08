@@ -5,6 +5,8 @@
 
 #include "engine.h"
 
+struct aiScene;
+
 typedef struct {
     double red;
     double green;
@@ -21,6 +23,11 @@ typedef struct Model {
     size_t vertex_count;
     ModelTriangle* triangles;
     size_t triangle_count;
+    // Complete source scene retained by Assimp for imported models. Include
+    // <assimp/scene.h> when accessing its meshes, materials, nodes, animations,
+    // textures, cameras, lights, skeletons, or metadata. Procedural models
+    // leave this NULL.
+    const struct aiScene* scene;
 } Model;
 
 typedef struct ModelTransform {
@@ -29,12 +36,17 @@ typedef struct ModelTransform {
     double scale;
 } ModelTransform;
 
-// Loads positions and polygon faces from a Wavefront OBJ file. Polygon faces
-// are triangulated. Referenced MTL libraries and their diffuse (Kd) colors are
-// applied per face; white is used when a material is absent or unknown. Image
-// maps contribute their overall color to the terminal material. Returns
-// nonzero on success and leaves model empty on failure.
+// Imports any model format supported by the configured Assimp build. The full
+// scene is retained in model.scene and a transformed triangle representation
+// is generated for mesh(). Returns nonzero on success and leaves model empty
+// on failure.
+int load_model(Model* model, const char* path);
+
+// Compatibility alias for load_model().
 int load_obj(Model* model, const char* path);
 
-// Releases data allocated by load_obj.
+// Returns Assimp's diagnostic for the most recent import failure.
+const char* model_error(void);
+
+// Releases both imported scenes and generated rendering data.
 void free_model(Model* model);

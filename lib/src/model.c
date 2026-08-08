@@ -1,7 +1,12 @@
 #include "model.h"
 
+#include <assimp/cimport.h>
+#include <assimp/material.h>
+#include <assimp/postprocess.h>
+#include <assimp/scene.h>
+
 #include <math.h>
-#include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -15,23 +20,16 @@ typedef struct {
 } RenderTriangle;
 
 typedef struct {
-    char* name;
-    ModelColor ambient;
-    ModelColor diffuse;
-    ModelColor specular;
-    ModelColor emissive;
-    ModelColor transmission;
-    double shininess;
-    double optical_density;
-    double opacity;
-    int illumination;
-} Material;
+    double values[4][4];
+} Matrix;
 
-typedef struct {
-    Material* items;
-    size_t count;
-    size_t capacity;
-} MaterialList;
+static double color_component(double value) {
+    if (value <= 0.)
+        return 0.;
+    if (value >= 1.)
+        return 1.;
+    return value;
+}
 
 static char* copy_string(const char* value) {
     size_t size = strlen(value) + 1;
@@ -41,363 +39,214 @@ static char* copy_string(const char* value) {
     return copy;
 }
 
-static char* line_value(char* text) {
-    while (*text == ' ' || *text == '\t')
-        ++text;
-
-    char* comment = strchr(text, '#');
-    if (comment != NULL)
-        *comment = '\0';
-
-    size_t length = strlen(text);
-    while (length > 0 && (text[length - 1] == ' ' || text[length - 1] == '\t' ||
-                          text[length - 1] == '\r' || text[length - 1] == '\n'))
-        text[--length] = '\0';
-    return text;
-}
-
-static void free_materials(MaterialList* materials) {
-    for (size_t i = 0; i < materials->count; ++i)
-        free(materials->items[i].name);
-    free(materials->items);
-    *materials = (MaterialList){0};
-}
-
-static Material* append_material(MaterialList* materials,
-                                 const char* name,
-                                 ModelColor fallback) {
-    if (materials->count == materials->capacity) {
-        size_t next = materials->capacity == 0 ? 8 : materials->capacity * 2;
-        Material* items = realloc(materials->items, next * sizeof(*items));
-        if (items == NULL)
-            return NULL;
-        materials->items = items;
-        materials->capacity = next;
-    }
-
-    char* owned_name = copy_string(name);
-    if (owned_name == NULL)
-        return NULL;
-
-    Material* material = &materials->items[materials->count++];
-    *material = (Material){
-        .name = owned_name,
-        .ambient = {0., 0., 0.},
-        .diffuse = fallback,
-        .specular = {0., 0., 0.},
-        .emissive = {0., 0., 0.},
-        .transmission = {1., 1., 1.},
-        .optical_density = 1.,
-        .opacity = 1.,
-    };
-    return material;
-}
-
-static const Material* find_material(const MaterialList* materials,
-                                     const char* name) {
-    for (size_t i = materials->count; i > 0; --i)
-        if (strcmp(materials->items[i - 1].name, name) == 0)
-            return &materials->items[i - 1];
-    return NULL;
-}
-
-static double color_component(double value) {
-    if (value <= 0.)
-        return 0;
-    if (value >= 1.)
-        return 1.;
-    return value;
-}
-
-static ModelColor parse_color(const char* text, ModelColor fallback) {
-    double red;
-    double green;
-    double blue;
-    if (sscanf(text, "%lf %lf %lf", &red, &green, &blue) != 3)
-        return fallback;
-    return (ModelColor){color_component(red), color_component(green),
-                        color_component(blue)};
-}
-
-static char* relative_path(const char* obj_path, const char* referenced_path);
-
-static void apply_texture_color(const char* mtl_path,
-                                char* arguments,
-                                ModelColor* target) {
-    char* filename = NULL;
-    for (char* token = strtok(line_value(arguments), " \t"); token != NULL;
-         token = strtok(NULL, " \t"))
-        filename = token;
-    if (filename == NULL)
-        return;
-
-    char* path = relative_path(mtl_path, filename);
-    ModelColor texture;
-    if (path != NULL && image_average_color(path, &texture)) {
-        target->red *= texture.red;
-        target->green *= texture.green;
-        target->blue *= texture.blue;
-    }
-    free(path);
-}
-
-static ModelColor material_color(const Material* material) {
-    double transmission =
-        (material->transmission.red + material->transmission.green +
-         material->transmission.blue) /
-        3.;
-    double refraction =
-        material->optical_density > 0. ? 1. / material->optical_density : 1.;
-    double opacity = material->opacity * transmission;
-    if (material->illumination == 4 || material->illumination == 6 ||
-        material->illumination == 7 || material->illumination == 9)
-        opacity *= refraction;
-    if (opacity < 0.)
-        opacity = 0.;
-    if (opacity > 1.)
-        opacity = 1.;
-
-    double ambient = material->illumination >= 1 ? 0.125 : 0.;
-    double specular = material->illumination >= 2
-                          ? material->shininess / (material->shininess + 100.)
-                          : 0.;
-    double red = material->diffuse.red + ambient * material->ambient.red +
-                 specular * material->specular.red + material->emissive.red;
-    double green = material->diffuse.green + ambient * material->ambient.green +
-                   specular * material->specular.green +
-                   material->emissive.green;
-    double blue = material->diffuse.blue + ambient * material->ambient.blue +
-                  specular * material->specular.blue + material->emissive.blue;
-    if (red > 1.)
-        red = 1.;
-    if (green > 1.)
-        green = 1.;
-    if (blue > 1.)
-        blue = 1.;
-    return (ModelColor){red * opacity, green * opacity, blue * opacity};
-}
-
-static int load_mtl(MaterialList* materials,
-                    const char* path,
-                    ModelColor fallback) {
-    FILE* file = fopen(path, "r");
-    if (file == NULL)
-        return 0;
-
-    char line[4096];
-    Material* current = NULL;
-    int success = 1;
-
-    while (success && fgets(line, sizeof(line), file) != NULL) {
-        char* statement = line;
-        while (*statement == ' ' || *statement == '\t')
-            ++statement;
-
-        if (strncmp(statement, "newmtl", 6) == 0 &&
-            (statement[6] == ' ' || statement[6] == '\t')) {
-            char* name = line_value(statement + 6);
-            if (*name == '\0' ||
-                (current = append_material(materials, name, fallback)) == NULL)
-                success = 0;
-        } else if (current != NULL && strncmp(statement, "Kd", 2) == 0 &&
-                   (statement[2] == ' ' || statement[2] == '\t')) {
-            current->diffuse = parse_color(statement + 2, current->diffuse);
-        } else if (current != NULL && strncmp(statement, "Ka", 2) == 0 &&
-                   (statement[2] == ' ' || statement[2] == '\t')) {
-            current->ambient = parse_color(statement + 2, current->ambient);
-        } else if (current != NULL && strncmp(statement, "Ks", 2) == 0 &&
-                   (statement[2] == ' ' || statement[2] == '\t')) {
-            current->specular = parse_color(statement + 2, current->specular);
-        } else if (current != NULL && strncmp(statement, "Ke", 2) == 0 &&
-                   (statement[2] == ' ' || statement[2] == '\t')) {
-            current->emissive = parse_color(statement + 2, current->emissive);
-        } else if (current != NULL && strncmp(statement, "Tf", 2) == 0 &&
-                   (statement[2] == ' ' || statement[2] == '\t')) {
-            current->transmission =
-                parse_color(statement + 2, current->transmission);
-        } else if (current != NULL && strncmp(statement, "Ns", 2) == 0 &&
-                   (statement[2] == ' ' || statement[2] == '\t')) {
-            sscanf(statement + 2, "%lf", &current->shininess);
-        } else if (current != NULL && strncmp(statement, "Ni", 2) == 0 &&
-                   (statement[2] == ' ' || statement[2] == '\t')) {
-            sscanf(statement + 2, "%lf", &current->optical_density);
-        } else if (current != NULL && statement[0] == 'd' &&
-                   (statement[1] == ' ' || statement[1] == '\t')) {
-            sscanf(statement + 1, "%lf", &current->opacity);
-        } else if (current != NULL && strncmp(statement, "Tr", 2) == 0 &&
-                   (statement[2] == ' ' || statement[2] == '\t')) {
-            double transparency;
-            if (sscanf(statement + 2, "%lf", &transparency) == 1)
-                current->opacity = 1. - transparency;
-        } else if (current != NULL && strncmp(statement, "illum", 5) == 0 &&
-                   (statement[5] == ' ' || statement[5] == '\t')) {
-            sscanf(statement + 5, "%d", &current->illumination);
-        } else if (current != NULL && strncmp(statement, "map_Ka", 6) == 0 &&
-                   (statement[6] == ' ' || statement[6] == '\t')) {
-            apply_texture_color(path, statement + 6, &current->ambient);
-        } else if (current != NULL && strncmp(statement, "map_Kd", 6) == 0 &&
-                   (statement[6] == ' ' || statement[6] == '\t')) {
-            apply_texture_color(path, statement + 6, &current->diffuse);
-        }
-    }
-
-    if (ferror(file))
-        success = 0;
-    fclose(file);
-    return success;
-}
-
-static char* relative_path(const char* obj_path, const char* referenced_path) {
-    if (referenced_path[0] == '/')
+static char* relative_path(const char* model_path,
+                           const char* referenced_path) {
+    if (referenced_path[0] == '/' ||
+        (referenced_path[0] != '\0' && referenced_path[1] == ':'))
         return copy_string(referenced_path);
 
-    const char* slash = strrchr(obj_path, '/');
+    const char* slash = strrchr(model_path, '/');
     size_t directory_length =
-        slash == NULL ? 0 : (size_t)(slash - obj_path + 1);
+        slash == NULL ? 0 : (size_t)(slash - model_path + 1);
     size_t referenced_length = strlen(referenced_path);
     char* path = malloc(directory_length + referenced_length + 1);
     if (path == NULL)
         return NULL;
 
-    memcpy(path, obj_path, directory_length);
+    memcpy(path, model_path, directory_length);
     memcpy(path + directory_length, referenced_path, referenced_length + 1);
     return path;
 }
 
-static int append_vertex(Model* model, size_t* capacity, Pos3D vertex) {
-    if (model->vertex_count == *capacity) {
-        size_t next = *capacity == 0 ? 64 : *capacity * 2;
-        Pos3D* vertices = realloc(model->vertices, next * sizeof(*vertices));
-        if (vertices == NULL)
-            return 0;
-        model->vertices = vertices;
-        *capacity = next;
+static Matrix identity_matrix(void) {
+    return (Matrix){.values = {
+                        {1., 0., 0., 0.},
+                        {0., 1., 0., 0.},
+                        {0., 0., 1., 0.},
+                        {0., 0., 0., 1.},
+                    }};
+}
+
+static Matrix assimp_matrix(const struct aiMatrix4x4* matrix) {
+    return (Matrix){.values = {
+                        {matrix->a1, matrix->a2, matrix->a3, matrix->a4},
+                        {matrix->b1, matrix->b2, matrix->b3, matrix->b4},
+                        {matrix->c1, matrix->c2, matrix->c3, matrix->c4},
+                        {matrix->d1, matrix->d2, matrix->d3, matrix->d4},
+                    }};
+}
+
+static Matrix multiply_matrix(Matrix a, Matrix b) {
+    Matrix result = {0};
+    for (int row = 0; row < 4; ++row)
+        for (int column = 0; column < 4; ++column)
+            for (int i = 0; i < 4; ++i)
+                result.values[row][column] +=
+                    a.values[row][i] * b.values[i][column];
+    return result;
+}
+
+static Pos3D transform_point(Matrix matrix, struct aiVector3D point) {
+    double x = matrix.values[0][0] * point.x + matrix.values[0][1] * point.y +
+               matrix.values[0][2] * point.z + matrix.values[0][3];
+    double y = matrix.values[1][0] * point.x + matrix.values[1][1] * point.y +
+               matrix.values[1][2] * point.z + matrix.values[1][3];
+    double z = matrix.values[2][0] * point.x + matrix.values[2][1] * point.y +
+               matrix.values[2][2] * point.z + matrix.values[2][3];
+    double w = matrix.values[3][0] * point.x + matrix.values[3][1] * point.y +
+               matrix.values[3][2] * point.z + matrix.values[3][3];
+    if (w != 0. && w != 1.) {
+        x /= w;
+        y /= w;
+        z /= w;
+    }
+    return (Pos3D){x, y, z};
+}
+
+static void count_node(const struct aiScene* scene,
+                       const struct aiNode* node,
+                       size_t* vertices,
+                       size_t* triangles) {
+    for (unsigned int i = 0; i < node->mNumMeshes; ++i) {
+        unsigned int mesh_index = node->mMeshes[i];
+        if (mesh_index >= scene->mNumMeshes)
+            continue;
+        const struct aiMesh* mesh = scene->mMeshes[mesh_index];
+        *vertices += mesh->mNumVertices;
+        *triangles += mesh->mNumFaces;
+    }
+    for (unsigned int i = 0; i < node->mNumChildren; ++i)
+        count_node(scene, node->mChildren[i], vertices, triangles);
+}
+
+static ModelColor material_color(const struct aiScene* scene,
+                                 unsigned int material_index,
+                                 const char* model_path) {
+    ModelColor result = {1., 1., 1.};
+    if (material_index >= scene->mNumMaterials)
+        return result;
+
+    const struct aiMaterial* material = scene->mMaterials[material_index];
+    struct aiColor4D color;
+    if (aiGetMaterialColor(material, AI_MATKEY_BASE_COLOR, &color) ==
+            aiReturn_SUCCESS ||
+        aiGetMaterialColor(material, AI_MATKEY_COLOR_DIFFUSE, &color) ==
+            aiReturn_SUCCESS)
+        result = (ModelColor){color.r, color.g, color.b};
+
+    ai_real opacity = 1.;
+    if (aiGetMaterialFloat(material, AI_MATKEY_OPACITY, &opacity) ==
+        aiReturn_SUCCESS) {
+        result.red *= opacity;
+        result.green *= opacity;
+        result.blue *= opacity;
     }
 
-    model->vertices[model->vertex_count++] = vertex;
-    return 1;
-}
-
-static int append_triangle(Model* model,
-                           size_t* capacity,
-                           ModelTriangle triangle) {
-    if (model->triangle_count == *capacity) {
-        size_t next = *capacity == 0 ? 64 : *capacity * 2;
-        ModelTriangle* triangles =
-            realloc(model->triangles, next * sizeof(*triangles));
-        if (triangles == NULL)
-            return 0;
-        model->triangles = triangles;
-        *capacity = next;
+    struct aiString texture_path;
+    enum aiTextureType texture_type =
+        aiGetMaterialTextureCount(material, aiTextureType_BASE_COLOR) > 0
+            ? aiTextureType_BASE_COLOR
+            : aiTextureType_DIFFUSE;
+    if (aiGetMaterialTexture(material, texture_type, 0, &texture_path, NULL,
+                             NULL, NULL, NULL, NULL,
+                             NULL) == aiReturn_SUCCESS &&
+        texture_path.length > 0 && texture_path.data[0] != '*') {
+        char* path = relative_path(model_path, texture_path.data);
+        ModelColor average;
+        if (path != NULL && image_average_color(path, &average)) {
+            result.red *= average.red;
+            result.green *= average.green;
+            result.blue *= average.blue;
+        }
+        free(path);
     }
 
-    model->triangles[model->triangle_count++] = triangle;
-    return 1;
+    return result;
 }
 
-static int parse_index(const char* token, size_t vertex_count, size_t* index) {
-    char* end;
-    long value = strtol(token, &end, 10);
-    if (end == token || value == 0)
-        return 0;
+static void flatten_node(Model* model,
+                         const struct aiScene* scene,
+                         const struct aiNode* node,
+                         Matrix parent_transform,
+                         const char* model_path,
+                         size_t* vertex_offset,
+                         size_t* triangle_offset) {
+    Matrix node_transform = multiply_matrix(
+        parent_transform, assimp_matrix(&node->mTransformation));
 
-    long resolved = value > 0 ? value - 1 : (long)vertex_count + value;
-    if (resolved < 0 || (size_t)resolved >= vertex_count)
-        return 0;
+    for (unsigned int i = 0; i < node->mNumMeshes; ++i) {
+        unsigned int mesh_index = node->mMeshes[i];
+        if (mesh_index >= scene->mNumMeshes)
+            continue;
+        const struct aiMesh* mesh = scene->mMeshes[mesh_index];
+        size_t base = *vertex_offset;
+        ModelColor color =
+            material_color(scene, mesh->mMaterialIndex, model_path);
 
-    *index = (size_t)resolved;
-    return 1;
-}
+        for (unsigned int j = 0; j < mesh->mNumVertices; ++j)
+            model->vertices[(*vertex_offset)++] =
+                transform_point(node_transform, mesh->mVertices[j]);
 
-static int parse_face(Model* model,
-                      size_t* capacity,
-                      char* text,
-                      ModelColor color) {
-    size_t first;
-    size_t previous;
-    size_t count = 0;
-
-    for (char* token = strtok(text, " \t\r\n"); token != NULL;
-         token = strtok(NULL, " \t\r\n")) {
-        if (token[0] == '#')
-            break;
-
-        size_t current;
-        if (!parse_index(token, model->vertex_count, &current))
-            return 0;
-
-        if (count == 0)
-            first = current;
-        else if (count >= 2 &&
-                 !append_triangle(
-                     model, capacity,
-                     (ModelTriangle){{first, previous, current}, color}))
-            return 0;
-
-        previous = current;
-        ++count;
+        for (unsigned int j = 0; j < mesh->mNumFaces; ++j) {
+            const struct aiFace* face = &mesh->mFaces[j];
+            if (face->mNumIndices != 3)
+                continue;
+            model->triangles[(*triangle_offset)++] = (ModelTriangle){
+                {base + face->mIndices[0], base + face->mIndices[1],
+                 base + face->mIndices[2]},
+                color,
+            };
+        }
     }
 
-    return count >= 3;
+    for (unsigned int i = 0; i < node->mNumChildren; ++i)
+        flatten_node(model, scene, node->mChildren[i], node_transform,
+                     model_path, vertex_offset, triangle_offset);
 }
 
-int load_obj(Model* model, const char* path) {
+int load_model(Model* model, const char* path) {
     if (model == NULL || path == NULL)
         return 0;
 
     *model = (Model){0};
-    FILE* file = fopen(path, "r");
-    if (file == NULL)
+    unsigned int flags =
+        aiProcess_Triangulate | aiProcess_JoinIdenticalVertices |
+        aiProcess_ImproveCacheLocality | aiProcess_SortByPType |
+        aiProcess_GenSmoothNormals | aiProcess_CalcTangentSpace |
+        aiProcess_ValidateDataStructure | aiProcess_FindInvalidData |
+        aiProcess_GenBoundingBoxes;
+    const struct aiScene* scene = aiImportFile(path, flags);
+    if (scene == NULL || scene->mRootNode == NULL || scene->mNumMeshes == 0) {
+        if (scene != NULL)
+            aiReleaseImport(scene);
         return 0;
-
-    Model loaded = {0};
-    size_t vertex_capacity = 0;
-    size_t triangle_capacity = 0;
-    MaterialList materials = {0};
-    ModelColor current_color = {1., 1., 1.};
-    char line[4096];
-    int success = 1;
-
-    while (success && fgets(line, sizeof(line), file) != NULL) {
-        if (line[0] == 'v' && (line[1] == ' ' || line[1] == '\t')) {
-            Pos3D vertex;
-            if (sscanf(line + 1, "%lf %lf %lf", &vertex.x, &vertex.y,
-                       &vertex.z) != 3 ||
-                !append_vertex(&loaded, &vertex_capacity, vertex))
-                success = 0;
-        } else if (line[0] == 'f' && (line[1] == ' ' || line[1] == '\t')) {
-            if (!parse_face(&loaded, &triangle_capacity, line + 1,
-                            current_color))
-                success = 0;
-        } else if (strncmp(line, "mtllib", 6) == 0 &&
-                   (line[6] == ' ' || line[6] == '\t')) {
-            char* names = line_value(line + 6);
-            for (char* name = strtok(names, " \t"); name != NULL;
-                 name = strtok(NULL, " \t")) {
-                char* material_path = relative_path(path, name);
-                if (material_path == NULL) {
-                    success = 0;
-                    break;
-                }
-                // A missing material library is not fatal: faces remain white.
-                load_mtl(&materials, material_path, (ModelColor){1., 1., 1.});
-                free(material_path);
-            }
-        } else if (strncmp(line, "usemtl", 6) == 0 &&
-                   (line[6] == ' ' || line[6] == '\t')) {
-            const Material* material =
-                find_material(&materials, line_value(line + 6));
-            current_color = material == NULL ? (ModelColor){1., 1., 1.}
-                                             : material_color(material);
-        }
     }
 
-    if (ferror(file))
-        success = 0;
-    fclose(file);
-    free_materials(&materials);
+    size_t vertex_count = 0;
+    size_t triangle_capacity = 0;
+    count_node(scene, scene->mRootNode, &vertex_count, &triangle_capacity);
+    if (vertex_count == 0 || triangle_capacity == 0) {
+        aiReleaseImport(scene);
+        return 0;
+    }
 
-    if (!success || loaded.vertex_count == 0 || loaded.triangle_count == 0) {
+    Model loaded = {
+        .vertices = malloc(vertex_count * sizeof(*loaded.vertices)),
+        .triangles = malloc(triangle_capacity * sizeof(*loaded.triangles)),
+        .scene = scene,
+    };
+    if (loaded.vertices == NULL || loaded.triangles == NULL) {
+        free_model(&loaded);
+        return 0;
+    }
+
+    size_t vertex_offset = 0;
+    size_t triangle_offset = 0;
+    flatten_node(&loaded, scene, scene->mRootNode, identity_matrix(), path,
+                 &vertex_offset, &triangle_offset);
+    loaded.vertex_count = vertex_offset;
+    loaded.triangle_count = triangle_offset;
+    if (loaded.vertex_count == 0 || loaded.triangle_count == 0) {
         free_model(&loaded);
         return 0;
     }
@@ -406,12 +255,22 @@ int load_obj(Model* model, const char* path) {
     return 1;
 }
 
+int load_obj(Model* model, const char* path) {
+    return load_model(model, path);
+}
+
+const char* model_error(void) {
+    return aiGetErrorString();
+}
+
 void free_model(Model* model) {
     if (model == NULL)
         return;
 
     free(model->vertices);
     free(model->triangles);
+    if (model->scene != NULL)
+        aiReleaseImport(model->scene);
     *model = (Model){0};
 }
 
@@ -420,11 +279,7 @@ static Pos3D transform_vertex(Pos3D vertex, ModelTransform model_transform) {
                      model_transform.scale);
 }
 
-// Adapts backend-neutral material colors to the current screen backend. No
-// terminal or grayscale representation leaks into the loaded Model.
 static Color screen_color(ModelColor color) {
-    // Material colors are kept in a normalized linear space. ANSI truecolor
-    // values are sRGB encoded, otherwise darker materials appear nearly black.
     double red = pow(color_component(color.red), 1. / 2.2);
     double green = pow(color_component(color.green), 1. / 2.2);
     double blue = pow(color_component(color.blue), 1. / 2.2);
@@ -461,9 +316,6 @@ void mesh(const Model* model, const ModelTransform* transform) {
         Pos3D a = vertices[triangle.vertices[0]];
         Pos3D b = vertices[triangle.vertices[1]];
         Pos3D c = vertices[triangle.vertices[2]];
-
-        // Near-plane clipping can be added later; for now, reject triangles
-        // crossing or behind the camera so projection remains finite.
         if (a.z <= 0.01 || b.z <= 0.01 || c.z <= 0.01)
             continue;
 

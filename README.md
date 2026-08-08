@@ -7,15 +7,27 @@ mise install # install dependencies
 mise run install # setup git-hooks, etc.
 ```
 
+Applications can use the standard build rule with a one-line Makefile:
+
+```make
+include ../../lib/application.mk
+```
+
+For a custom build rule, include `lib/library.mk`. It provides `LIB_HEADERS`,
+`LIB_SOURCES`, `INCSPATH`, `LIBS`, and `DEPENDENCIES`.
+
 ## 3D models
 
-Models can be defined as indexed triangle meshes in C or loaded from a
-Wavefront OBJ file. OBJ polygons are triangulated automatically. Referenced
-MTL files are loaded relative to the OBJ file, and each material's diffuse
-`Kd` color is applied to faces selected with `usemtl`. JPEG, PNG, and other
-common image maps are decoded through the vendored `stb_image` library. Since
-the output is a grayscale character grid, image maps contribute their overall
-color and material intensity rather than full-resolution texels.
+Models can be defined as indexed triangle meshes in C or imported through
+Assimp. The first playground build automatically downloads the pinned Assimp
+source into `.deps`, builds it locally with at most two compiler jobs, and
+caches the result. Nothing is installed system-wide.
+
+`load_model` accepts every importer enabled by Assimp, including OBJ/MTL,
+glTF/GLB, FBX, Collada, PLY, STL, 3DS, Blender, and many others. Assimp's full
+scene remains available through `model.scene`, including meshes, normals, UVs,
+materials, textures, hierarchy, bones, animations, cameras, lights, and
+metadata. Include `<assimp/scene.h>` when accessing that data directly.
 
 ```c
 #include "model.h"
@@ -23,7 +35,7 @@ color and material intensity rather than full-resolution texels.
 Model model;
 
 void setup(void) {
-    if (!load_obj(&model, "model.obj"))
+    if (!load_model(&model, "model.glb"))
         /* handle the load error */;
 }
 
